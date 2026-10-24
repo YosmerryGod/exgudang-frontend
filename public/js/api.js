@@ -8,22 +8,22 @@ window.ExGudangAPI = (() => {
   const TIMEOUT_MS = 15000;
 
   function getToken() {
-    return sessionStorage.getItem(TOKEN_KEY);
+    return localStorage.getItem(TOKEN_KEY);
   }
 
   function saveSession(token, admin) {
-    sessionStorage.setItem(TOKEN_KEY, token);
-    sessionStorage.setItem(ADMIN_KEY, JSON.stringify(admin));
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(ADMIN_KEY, JSON.stringify(admin));
   }
 
   function clearSession() {
-    sessionStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(ADMIN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(ADMIN_KEY);
   }
 
   function getAdmin() {
     try {
-      return JSON.parse(sessionStorage.getItem(ADMIN_KEY) || 'null');
+      return JSON.parse(localStorage.getItem(ADMIN_KEY) || 'null');
     } catch {
       return null;
     }
