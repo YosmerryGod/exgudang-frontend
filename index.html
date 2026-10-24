@@ -1,0 +1,115 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="ExGudang - pencatatan stok pribadi yang simpel dan mudah">
+  <title>ExGudang — Stok Pribadi</title>
+
+  <!-- [ADDED] Font UI yang mendekati referensi. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- [ADDED] Ikon antarmuka. -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+
+  <!-- [ADDED] CSS aplikasi. -->
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+  <div id="app" class="app-shell">
+
+    <!-- [ADDED] Header aplikasi. -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-box-open"></i>
+        </div>
+
+        <div class="brand-copy">
+          <h1>ExGudang</h1>
+          <p>Stok pribadi, simpel &amp; mudah</p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        class="icon-button"
+        id="notification-button"
+        aria-label="Notifikasi"
+      >
+        <i class="fa-regular fa-bell"></i>
+      </button>
+    </header>
+
+    <!-- [ADDED] Konten halaman dirender melalui JavaScript. -->
+    <main id="page-content" class="page-content" aria-live="polite">
+      <section class="loading-state">
+        <div class="loading-spinner"></div>
+        <p>Memuat ExGudang...</p>
+      </section>
+    </main>
+
+    <!-- [ADDED] Navigasi bawah sesuai referensi. -->
+    <nav class="bottom-nav" aria-label="Navigasi utama">
+      <button
+        type="button"
+        class="nav-item active"
+        data-page="home"
+        aria-current="page"
+      >
+        <i class="fa-solid fa-house"></i>
+        <span>Beranda</span>
+      </button>
+
+      <button
+        type="button"
+        class="nav-item"
+        data-page="items"
+      >
+        <i class="fa-solid fa-cube"></i>
+        <span>Barang</span>
+      </button>
+
+      <button
+        type="button"
+        class="nav-item"
+        data-page="reports"
+      >
+        <i class="fa-solid fa-chart-column"></i>
+        <span>Laporan</span>
+      </button>
+    </nav>
+
+    <!-- [ADDED] Area notifikasi singkat. -->
+    <div id="toast-container" class="toast-container" aria-live="assertive"></div>
+
+    <!-- [ADDED] Dialog global untuk konfirmasi. -->
+    <dialog id="confirm-dialog" class="app-dialog">
+      <form method="dialog" class="dialog-content">
+        <h2 id="confirm-title">Konfirmasi</h2>
+        <p id="confirm-message">Apakah kamu yakin?</p>
+
+        <div class="dialog-actions">
+          <button type="submit" value="cancel" class="button button-secondary">
+            Batal
+          </button>
+          <button type="submit" value="confirm" class="button button-danger">
+            Ya, lanjutkan
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+  </div>
+
+  <!-- [ADDED] JavaScript aplikasi. -->
+  <script src="/js/api.js" defer></script>
+  <script src="/js/pages.js" defer></script>
+  <script src="/js/app.js" defer></script>
+</body>
+</html>
