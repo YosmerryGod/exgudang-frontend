@@ -1312,3 +1312,35 @@ img {
 .panel-body .movement-row{padding:8px 14px}
 .panel-body .empty-state{padding:24px 12px}
 .item-side{align-items:flex-end}
+
+/* ===== Form transaksi banyak barang ===== */
+.line-card{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--green);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px;box-shadow:0 2px 10px rgba(20,40,30,.04)}
+.line-head{display:flex;justify-content:space-between;align-items:center}
+.line-no{font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.04em}
+.line-remove{border:0;background:var(--red-light);color:var(--red);width:32px;height:32px;border-radius:9px;cursor:pointer}
+.line-info{font-size:12px;color:var(--muted);background:#f3f6f5;border-radius:8px;padding:7px 10px}
+.line-info.warn{background:var(--red-light);color:var(--red)}
+.line-sub{display:flex;justify-content:space-between;font-size:13px;padding-top:8px;border-top:1px dashed var(--border)}
+.stock-summary{display:grid;grid-template-columns:1fr 1.6fr;gap:8px;background:var(--green-light);border-radius:14px;padding:12px 14px}
+.stock-summary.out{background:var(--red-light)}
+.stock-summary span{display:block;font-size:11px;color:var(--muted)}
+.stock-summary b{font-size:17px;font-weight:800}
+
+/* ===== Filter tanggal & riwayat ===== */
+.range-filter{display:flex;flex-direction:column;gap:8px}
+.chip-scroll{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.chip-scroll::-webkit-scrollbar{display:none}
+.chip-scroll .filter-chip{flex:0 0 auto}
+.range-custom{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px}
+.range-custom label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.range-custom .button{grid-column:1/-1}
+.range-label{margin:0;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.range-note{margin:8px 0 0;font-size:11px;color:var(--orange);background:var(--orange-light);border-radius:8px;padding:7px 10px}
+.chart-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px}
+.day-head{display:flex;justify-content:space-between;align-items:baseline;margin:16px 2px 6px;font-size:13px}
+.day-head span{font-size:11px;color:var(--muted)}
+.mini-stat.blue{background:var(--blue-light);color:var(--blue)}
+.mini-stat strong{font-size:15px}
+.rank-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)}
+.rank-row:last-child{border-bottom:0}
+.rank-no{width:24px;height:24px;border-radius:50%;background:var(--green-light);color:var(--green);display:grid;place-items:center;font-size:12px;font-weight:700}

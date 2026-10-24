@@ -207,36 +207,67 @@ window.ExGudangPages = (() => {
   }
 
   // Helper laporan: bulan, agregasi harian, grafik SVG.
-  let reportMonth = today().slice(0, 7);
-  const monthName = (m) => new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(new Date(m + '-01T12:00:00'));
-  const monthRange = (m) => { const [y, mo] = m.split('-').map(Number); return [m + '-01', `${m}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`]; };
-  const monthPicker = () => `<label class="month-select"><i class="fa-regular fa-calendar"></i><span>${monthName(reportMonth)}</span><i class="fa-solid fa-chevron-down"></i><input type="month" id="report-month" value="${reportMonth}"></label>`;
-  async function monthMovements() {
-    const [a, b] = monthRange(reportMonth);
-    const r = await API.getRecentMovements(100);
-    return (r.data || []).filter((m) => { const d = String(m.occurred_at).slice(0, 10); return d >= a && d <= b; });
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const addDays = (str, n) => { const d = new Date(str + 'T12:00:00'); d.setDate(d.getDate() + n); return iso(d); };
+  const shortDate = (str) => new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(str + 'T12:00:00'));
+  const presetRange = (p) => { const t = today(); return p === 'today' ? [t, t] : p === 'yesterday' ? [addDays(t, -1), addDays(t, -1)] : p === 'week' ? [addDays(t, -6), t] : [t.slice(0, 8) + '01', t]; };
+  let range = { preset: 'month', start: presetRange('month')[0], end: presetRange('month')[1] };
+  let activeView = { page: 'home', params: {} }, prevView = { page: 'home', params: {} }, moveType = 'all';
+  const rerender = () => render(activeView.page, activeView.params);
+  const toastMsg = (message, type) => window.dispatchEvent(new CustomEvent('exgudang:toast', { detail: { message, type } }));
+
+  const rangeLabel = () => range.start === range.end ? shortDate(range.start) : `${shortDate(range.start)} – ${shortDate(range.end)}`;
+  function rangeFilter() {
+    const chips = [['today', 'Hari Ini'], ['yesterday', 'Kemarin'], ['week', '7 Hari'], ['month', 'Bulan Ini'], ['custom', 'Pilih Tanggal']];
+    return `<section class="range-filter">
+      <div class="chip-scroll">${chips.map(([k, l]) => `<button type="button" class="filter-chip ${range.preset === k ? 'active' : ''}" data-action="range-preset" data-preset="${k}">${l}</button>`).join('')}</div>
+      ${range.preset === 'custom' ? `<div class="range-custom">
+        <label>Dari<input class="input" type="date" id="range-start" value="${range.start}" max="${today()}"></label>
+        <label>Sampai<input class="input" type="date" id="range-end" value="${range.end}" max="${today()}"></label>
+        <button type="button" class="button" data-action="apply-range">Terapkan</button></div>` : ''}
+      <p class="range-label"><i class="fa-regular fa-calendar"></i> ${rangeLabel()}</p></section>`;
   }
+  function setPreset(p) { if (p !== 'custom') { [range.start, range.end] = presetRange(p); } range.preset = p; return rerender(); }
+  function applyRange() {
+    let a = document.getElementById('range-start').value, b = document.getElementById('range-end').value;
+    if (!a || !b) return toastMsg('Pilih tanggal awal dan akhir.', 'error');
+    if (a > b) [a, b] = [b, a];
+    range = { preset: 'custom', start: a, end: b };
+    return rerender();
+  }
+
+  async function rangeMovements() {
+    const all = (await API.getRecentMovements(100)).data || [];
+    const day = (m) => iso(new Date(m.occurred_at));
+    const list = all.filter((m) => day(m) >= range.start && day(m) <= range.end);
+    const oldest = all.map(day).sort()[0];
+    return { list, truncated: all.length >= 100 && oldest > range.start };
+  }
+  const truncNote = (mv) => mv.truncated ? '<p class="range-note"><i class="fa-solid fa-circle-info"></i> Daftar dibatasi 100 transaksi terbaru, transaksi lama pada rentang ini mungkin tidak tampil. Total pada kartu tetap lengkap.</p>' : '';
   const mValue = (m) => Number(m.total_value ?? Number(m.quantity) * Number(m.unit_outgoing_price ?? m.unit_cost ?? 0));
-  function byDay(list) {
-    const days = new Date(+reportMonth.slice(0, 4), +reportMonth.slice(5), 0).getDate();
-    const d = Array.from({ length: days }, () => ({ in: 0, out: 0, val: 0 }));
-    list.forEach((m) => { const i = new Date(m.occurred_at).getDate() - 1; if (!d[i]) return;
+  function buckets(list) {
+    const days = Math.round((new Date(range.end) - new Date(range.start)) / 864e5) + 1;
+    const n = days === 1 ? 24 : Math.min(days, 92);
+    const d = Array.from({ length: n }, () => ({ in: 0, out: 0, val: 0 }));
+    list.forEach((m) => {
+      const i = days === 1 ? new Date(m.occurred_at).getHours() : Math.round((new Date(iso(new Date(m.occurred_at))) - new Date(range.start)) / 864e5);
+      if (!d[i]) return;
       if (m.movement_type === 'IN') d[i].in += Number(m.quantity);
-      if (m.movement_type === 'OUT') { d[i].out += Number(m.quantity); d[i].val += mValue(m); } });
+      if (m.movement_type === 'OUT') { d[i].out += Number(m.quantity); d[i].val += mValue(m); }
+    });
     return d;
   }
+  const chartAxis = () => `<div class="chart-axis"><span>${range.start === range.end ? '00:00' : shortDate(range.start)}</span><span>${range.start === range.end ? '23:59' : shortDate(range.end)}</span></div>`;
   function barChart(d) {
     const max = Math.max(1, ...d.map((x) => Math.max(x.in, x.out))), w = 300 / d.length;
-    return `<svg viewBox="0 0 300 112" class="chart-svg">${d.map((x, i) => `<rect x="${i * w + 0.5}" y="${100 - 90 * x.in / max}" width="${w / 2 - 0.5}" height="${90 * x.in / max}" fill="#07864f"/><rect x="${i * w + w / 2}" y="${100 - 90 * x.out / max}" width="${w / 2 - 0.5}" height="${90 * x.out / max}" fill="#e62e43"/>`).join('')}<line x1="0" x2="300" y1="100" y2="100" stroke="#e9edf0"/><text x="0" y="110" font-size="7" fill="#7d8792">1</text><text x="290" y="110" font-size="7" fill="#7d8792">${d.length}</text></svg>`;
+    return `<svg viewBox="0 0 300 112" class="chart-svg">${d.map((x, i) => `<rect x="${i * w + 0.5}" y="${100 - 90 * x.in / max}" width="${w / 2 - 0.5}" height="${90 * x.in / max}" fill="#07864f"/><rect x="${i * w + w / 2}" y="${100 - 90 * x.out / max}" width="${w / 2 - 0.5}" height="${90 * x.out / max}" fill="#e62e43"/>`).join('')}<line x1="0" x2="300" y1="100" y2="100" stroke="#e9edf0"/></svg>`;
   }
   function lineChart(d) {
     let c = 0; const pts = d.map((x) => (c += x.val)); const max = Math.max(1, c), w = 300 / (d.length - 1 || 1);
     const p = pts.map((v, i) => `${i * w},${100 - 90 * v / max}`).join(' ');
     return `<svg viewBox="0 0 300 104" class="chart-svg"><polygon points="0,100 ${p} 300,100" fill="#e8f7ef"/><polyline points="${p}" fill="none" stroke="#07864f" stroke-width="1.8"/><line x1="0" x2="300" y1="100" y2="100" stroke="#e9edf0"/></svg>`;
   }
-  document.addEventListener('change', (e) => {
-    if (e.target.id === 'report-month' && e.target.value) { reportMonth = e.target.value; render(window.ExGudangApp.currentPage); }
-  });
+  
 
   // [ADDED] Beranda berdasarkan dashboard API.
   async function renderHome() {
@@ -563,180 +594,145 @@ window.ExGudangPages = (() => {
     } catch (e) { showError(e); }
   }
 
-  // [ADDED] Form transaksi stok masuk/keluar.
+  // [ADDED] Form transaksi stok masuk/keluar (banyak barang sekaligus).
   async function renderStockForm(type, itemId = null) {
     showLoading();
-
     try {
-      const result = await API.getItems();
-      cachedItems = result.data || [];
-
+      cachedItems = (await API.getItems()).data || [];
       const isIn = type === 'in';
-      const item = itemId
-        ? cachedItems.find((entry) => Number(entry.id) === Number(itemId))
-        : null;
+      const label = isIn ? 'Masuk' : 'Keluar';
+      const priceOf = (it) => Number(isIn ? it.cost_price : it.outgoing_price);
+      const byId = (id) => cachedItems.find((e) => Number(e.id) === Number(id));
+      const toast = (message, kind) => window.dispatchEvent(new CustomEvent('exgudang:toast', { detail: { message, type: kind } }));
+      let uid = 0;
 
-      selectedItemId = itemId;
+      const lineHtml = (sel) => `
+        <div class="line-card" data-line="${++uid}">
+          <div class="line-head"><span class="line-no"></span>
+            <button type="button" class="line-remove" data-remove aria-label="Hapus baris"><i class="fa-regular fa-trash-can"></i></button></div>
+          <select class="select" data-f="item">
+            <option value="">Pilih barang...</option>
+            ${cachedItems.map((e) => `<option value="${Number(e.id)}" ${Number(sel) === Number(e.id) ? 'selected' : ''}>${escapeHtml(e.name)} (${escapeHtml(e.code)})</option>`).join('')}
+          </select>
+          <div class="line-info" data-f="info">Pilih barang untuk melihat stok.</div>
+          <div class="form-grid">
+            <div class="form-group"><label>Jumlah</label>
+              <div class="input-with-suffix"><input class="input" type="number" data-f="qty" min="0" step="any" inputmode="decimal" placeholder="0"><span class="input-suffix" data-f="unit">-</span></div></div>
+            <div class="form-group"><label>Harga ${isIn ? 'Modal' : 'Keluar'}</label>
+              <div class="input-with-suffix"><input class="input" type="number" data-f="price" min="0" step="any" inputmode="decimal" placeholder="0"><span class="input-suffix">Rp</span></div></div>
+          </div>
+          <div class="line-sub"><span>Subtotal</span><b data-f="sub">Rp 0</b></div>
+        </div>`;
 
       content().innerHTML = `
         <div class="page-heading">
-          <button type="button" class="icon-button" data-action="back-items" aria-label="Kembali">
-            <i class="fa-solid fa-arrow-left"></i>
-          </button>
-          <h2>Barang ${isIn ? 'Masuk' : 'Keluar'}</h2>
-          <span style="width:40px"></span>
+          <button type="button" class="icon-button" data-action="back-items" aria-label="Kembali"><i class="fa-solid fa-arrow-left"></i></button>
+          <h2>Barang ${label}</h2><span style="width:40px"></span>
         </div>
-
-        <form id="stock-form" class="card form-stack">
-          <div class="form-group">
-            <label>Pilih Barang <span class="required">*</span></label>
-            <select class="select" name="item_id" id="stock-item-select" required>
-              <option value="">Pilih barang...</option>
-              ${cachedItems.map((entry) => `
-                <option value="${Number(entry.id)}"
-                  ${item && Number(item.id) === Number(entry.id) ? 'selected' : ''}>
-                  ${escapeHtml(entry.name)} (${escapeHtml(entry.code)})
-                </option>
-              `).join('')}
-            </select>
-          </div>
-
-          <div id="stock-item-info"></div>
-
-          <div class="form-group">
-            <label>Jumlah ${isIn ? 'Masuk' : 'Keluar'} <span class="required">*</span></label>
-            <input class="input" type="number" name="quantity" min="0.000001"
-                   step="any" required placeholder="Masukkan jumlah">
-          </div>
-
-          <div class="form-group">
-            <label>Harga ${isIn ? 'Modal' : 'Keluar'} <span class="required">*</span></label>
-            <div class="input-with-suffix">
-              <input class="input" type="number"
-                     name="unit_${isIn ? 'cost' : 'outgoing_price'}"
-                     id="stock-price-input" min="0" step="any" required
-                     value="${item ? Number(isIn ? item.cost_price : item.outgoing_price) : ''}">
-              <span class="input-suffix">Rp</span>
+        <form id="stock-form" class="form-stack">
+          <section class="card form-stack">
+            <p class="card-title"><i class="fa-regular fa-file-lines"></i> Informasi Transaksi</p>
+            <div class="form-grid">
+              <div class="form-group"><label>Tanggal <span class="required">*</span></label>
+                <input class="input" type="date" name="date" value="${today()}" required></div>
+              <div class="form-group"><label>${isIn ? 'Supplier' : 'Tujuan'}</label>
+                <input class="input" name="party" maxlength="150" placeholder="${isIn ? 'Nama supplier' : 'Contoh: dapur'}"></div>
             </div>
-          </div>
+            <div class="form-group"><label>Catatan</label>
+              <textarea class="textarea" name="note" maxlength="500" placeholder="Catatan untuk semua barang (opsional)"></textarea></div>
+          </section>
 
-          ${isIn ? `
-            <div class="form-group">
-              <label>Supplier</label>
-              <input class="input" name="supplier" maxlength="150"
-                     placeholder="Nama supplier">
-            </div>
-          ` : `
-            <div class="form-group">
-              <label>Tujuan / Keperluan</label>
-              <input class="input" name="destination" maxlength="150"
-                     placeholder="Contoh: kebutuhan dapur">
-            </div>
-          `}
+          <div class="section-heading"><h3>Daftar Barang</h3><span class="count-badge" id="line-count">1</span></div>
+          <div id="lines" class="form-stack">${lineHtml(itemId)}</div>
+          <button type="button" class="button button-secondary button-block" id="add-line"><i class="fa-solid fa-plus"></i> Tambah Barang Lain</button>
 
-          <div class="form-group">
-            <label>Tanggal <span class="required">*</span></label>
-            <input class="input" type="date" name="occurred_at_date"
-                   value="${today()}" required>
-          </div>
-
-          <div class="form-group">
-            <label>Catatan</label>
-            <textarea class="textarea" name="note" maxlength="500"
-                      placeholder="Catatan opsional..."></textarea>
-          </div>
-
-          <button type="submit"
-                  class="button button-block ${isIn ? '' : 'button-danger'}"
-                  id="save-stock-button">
-            <i class="fa-solid fa-floppy-disk"></i>
-            Simpan Barang ${isIn ? 'Masuk' : 'Keluar'}
+          <section class="stock-summary ${isIn ? '' : 'out'}">
+            <div><span>Jumlah Barang</span><b id="sum-lines">0</b></div>
+            <div><span>Total Nilai</span><b id="sum-total">Rp 0</b></div>
+          </section>
+          <button type="submit" class="button button-block ${isIn ? '' : 'button-danger'}" id="save-stock-button">
+            <i class="fa-solid fa-floppy-disk"></i> Simpan Barang ${label}
           </button>
-        </form>
-      `;
+        </form>`;
 
-      const select = document.getElementById('stock-item-select');
+      const wrap = document.getElementById('lines');
+      const f = (line, name) => line.querySelector(`[data-f="${name}"]`);
 
-      const updateSelectedItem = () => {
-        const selected = cachedItems.find(
-          (entry) => Number(entry.id) === Number(select.value)
-        );
+      function updateLine(line, resetPrice) {
+        const it = byId(f(line, 'item').value);
+        const qty = Number(f(line, 'qty').value) || 0;
+        if (resetPrice) f(line, 'price').value = it ? priceOf(it) : '';
+        f(line, 'unit').textContent = it ? it.unit : '-';
+        const over = !isIn && it && qty > Number(it.current_stock);
+        f(line, 'info').className = 'line-info' + (over ? ' warn' : '');
+        f(line, 'info').innerHTML = it
+          ? `Stok tersedia: <b>${number(it.current_stock)} ${escapeHtml(it.unit)}</b>${over ? ' — jumlah melebihi stok' : ''}`
+          : 'Pilih barang untuk melihat stok.';
+        f(line, 'sub').textContent = money(qty * (Number(f(line, 'price').value) || 0));
+      }
 
-        const info = document.getElementById('stock-item-info');
-        const priceInput = document.getElementById('stock-price-input');
+      function refresh() {
+        const lines = [...wrap.querySelectorAll('.line-card')];
+        let total = 0;
+        lines.forEach((l, i) => {
+          l.querySelector('.line-no').textContent = `Barang ${i + 1}`;
+          l.querySelector('[data-remove]').style.visibility = lines.length > 1 ? 'visible' : 'hidden';
+          total += (Number(f(l, 'qty').value) || 0) * (Number(f(l, 'price').value) || 0);
+        });
+        document.getElementById('line-count').textContent = lines.length;
+        document.getElementById('sum-lines').textContent = lines.length;
+        document.getElementById('sum-total').textContent = money(total);
+      }
 
-        if (!selected) {
-          info.innerHTML = '';
-          priceInput.value = '';
-          return;
-        }
+      const addLine = (sel) => { wrap.insertAdjacentHTML('beforeend', lineHtml(sel)); const l = wrap.lastElementChild; if (sel) updateLine(l, true); refresh(); return l; };
+      wrap.querySelectorAll('.line-card').forEach((l) => updateLine(l, true));
+      refresh();
 
-        priceInput.value = Number(
-          isIn ? selected.cost_price : selected.outgoing_price
-        );
-
-        info.innerHTML = `
-          <div class="detail-value">
-            <span>Stok tersedia</span>
-            <strong>${number(selected.current_stock)} ${escapeHtml(selected.unit)}</strong>
-          </div>
-        `;
-      };
-
-      select.addEventListener('change', updateSelectedItem);
-      updateSelectedItem();
+      document.getElementById('add-line').addEventListener('click', () => addLine(null).scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      wrap.addEventListener('click', (e) => { const r = e.target.closest('[data-remove]'); if (r) { r.closest('.line-card').remove(); refresh(); } });
+      wrap.addEventListener('input', (e) => { const l = e.target.closest('.line-card'); if (l) { updateLine(l, false); refresh(); } });
+      wrap.addEventListener('change', (e) => { const l = e.target.closest('.line-card'); if (l && e.target.dataset.f === 'item') { updateLine(l, true); refresh(); } });
 
       document.getElementById('stock-form').addEventListener('submit', async (event) => {
         event.preventDefault();
-
-        const form = event.currentTarget;
-        const formData = Object.fromEntries(new FormData(form).entries());
+        const fd = Object.fromEntries(new FormData(event.currentTarget).entries());
         const button = document.getElementById('save-stock-button');
+        const lines = [...wrap.querySelectorAll('.line-card')];
+        const used = {};
 
-        const payload = {
-          quantity: Number(formData.quantity),
-          note: formData.note.trim() || undefined,
-          occurred_at: new Date(
-            `${formData.occurred_at_date}T12:00:00`
-          ).toISOString()
-        };
-
-        if (isIn) {
-          payload.unit_cost = Number(formData.unit_cost);
-          payload.supplier = formData.supplier.trim() || undefined;
-        } else {
-          payload.unit_outgoing_price = Number(formData.unit_outgoing_price);
-          payload.destination = formData.destination.trim() || undefined;
+        for (let i = 0; i < lines.length; i++) {
+          const l = lines[i], it = byId(f(l, 'item').value), qty = Number(f(l, 'qty').value), price = Number(f(l, 'price').value);
+          if (!it) return toast(`Barang ${i + 1}: pilih barang terlebih dahulu.`, 'error');
+          if (!(qty > 0)) return toast(`Barang ${i + 1}: jumlah harus lebih dari 0.`, 'error');
+          if (!(price >= 0) || f(l, 'price').value === '') return toast(`Barang ${i + 1}: isi harga.`, 'error');
+          used[it.id] = (used[it.id] || 0) + qty;
+          if (!isIn && used[it.id] > Number(it.current_stock)) return toast(`Barang ${i + 1}: stok ${it.name} tidak cukup.`, 'error');
         }
 
         button.disabled = true;
         button.textContent = 'Menyimpan...';
+        const restore = () => { button.disabled = false; button.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Simpan Barang ${label}`; };
+        const party = (fd.party || '').trim() || undefined, note = (fd.note || '').trim() || undefined;
+        const when = new Date(`${fd.date}T12:00:00`).toISOString();
+        let done = 0;
 
-        try {
-          if (isIn) {
-            await API.stockIn(formData.item_id, payload);
-          } else {
-            await API.stockOut(formData.item_id, payload);
+        for (const l of lines) {
+          const payload = { quantity: Number(f(l, 'qty').value), note, occurred_at: when };
+          const price = Number(f(l, 'price').value);
+          if (isIn) { payload.unit_cost = price; payload.supplier = party; }
+          else { payload.unit_outgoing_price = price; payload.destination = party; }
+          try {
+            const id = f(l, 'item').value;
+            await (isIn ? API.stockIn(id, payload) : API.stockOut(id, payload));
+            l.remove(); done++;
+          } catch (error) {
+            refresh(); restore();
+            return toast(`${done ? done + ' barang tersimpan. ' : ''}Gagal: ${error.message}`, 'error');
           }
-
-          window.dispatchEvent(new CustomEvent('exgudang:toast', {
-            detail: {
-              message: `Transaksi stok ${isIn ? 'masuk' : 'keluar'} berhasil`,
-              type: 'success'
-            }
-          }));
-
-          window.ExGudangApp.navigate('detail', {
-            id: Number(formData.item_id)
-          });
-        } catch (error) {
-          window.dispatchEvent(new CustomEvent('exgudang:toast', {
-            detail: { message: error.message, type: 'error' }
-          }));
-
-          button.disabled = false;
-          button.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Simpan Barang ${isIn ? 'Masuk' : 'Keluar'}`;
         }
+
+        toast(`${done} barang ${isIn ? 'masuk' : 'keluar'} berhasil dicatat`, 'success');
+        window.ExGudangApp.navigate('home');
       });
     } catch (error) {
       showError(error);
@@ -747,80 +743,88 @@ window.ExGudangPages = (() => {
   async function renderReports() {
     showLoading();
     try {
-      const st = (await API.getReportSummary()).data, list = await monthMovements(), d = byDay(list);
-      const tin = d.reduce((a, x) => a + x.in, 0), tout = d.reduce((a, x) => a + x.out, 0);
+      const [st, rep, mv] = await Promise.all([API.getReportSummary(), API.getMovementReport(range.start, range.end), rangeMovements()]);
+      const s0 = st.data, r = rep.data;
       const tile = (ic, c, l, v) => `<div class="stat-card stat-${c}"><div class="stat-icon"><i class="fa-solid ${ic}"></i></div><div class="stat-content"><p class="stat-label">${l}</p><p class="stat-number">${v}</p></div></div>`;
       const link = (a, ic, col, t, sub) => `<button type="button" class="item-row" data-action="${a}"><div class="stat-icon" style="color:var(--${col});background:var(--${col}-light)"><i class="fa-solid ${ic}"></i></div><div class="item-info"><p class="item-name">${t}</p><p class="item-price">${sub}</p></div><i class="fa-solid fa-chevron-right text-muted"></i></button>`;
       content().innerHTML = `
-        <div class="page-heading"><h2>Laporan</h2></div>${monthPicker()}
+        <div class="page-heading"><h2>Laporan</h2></div>${rangeFilter()}
         <section class="stat-grid mt-12">
-          ${tile('fa-cube', 'green', 'Total Barang', number(st.total_items))}
-          ${tile('fa-database', 'blue', 'Nilai Stok', money(st.total_stock_cost_value))}
-          ${tile('fa-arrow-trend-up', 'green', 'Total Masuk', '+ ' + number(tin))}
-          ${tile('fa-box-archive', 'red', 'Total Keluar', '- ' + number(tout))}
+          ${tile('fa-cube', 'green', 'Total Barang', number(s0.total_items))}
+          ${tile('fa-database', 'blue', 'Nilai Stok', money(s0.total_stock_cost_value))}
+          ${tile('fa-arrow-trend-up', 'green', 'Total Masuk', '+ ' + number(r.total_in_quantity))}
+          ${tile('fa-box-archive', 'red', 'Total Keluar', '- ' + number(r.total_out_quantity))}
         </section>
+        <div class="info-row mt-12">
+          <div class="info-card"><span>Nilai Barang Keluar</span><b>${money(r.total_outgoing_value)}</b></div>
+          <div class="info-card"><span>Estimasi Laba</span><b class="text-green">${money(r.estimated_profit)}</b></div>
+        </div>
         <div class="section-heading"><h3>Pergerakan Stok</h3><span class="legend"><i class="dot g"></i>Masuk <i class="dot r"></i>Keluar</span></div>
-        <section class="card">${list.length ? barChart(d) : emptyState('Belum ada pergerakan bulan ini', 'fa-chart-column')}</section>
+        <section class="card">${mv.list.length ? barChart(buckets(mv.list)) + chartAxis() : emptyState('Belum ada pergerakan pada periode ini', 'fa-chart-column')}${truncNote(mv)}</section>
         <div class="section-heading"><h3>Jenis Laporan</h3></div>
         <section class="item-list">
-          ${link('report-items', 'fa-boxes-stacked', 'green', 'Laporan Barang', 'Daftar barang dan stok terkini')}
+          ${link('all-movements', 'fa-clock-rotate-left', 'blue', 'Riwayat Transaksi', 'Semua barang masuk dan keluar')}
+          ${link('report-items', 'fa-boxes-stacked', 'green', 'Laporan Barang', 'Terbanyak keluar dan stok terkini')}
           ${link('report-profit', 'fa-chart-line', 'blue', 'Laporan Keuntungan', 'Estimasi laba kotor')}
           ${link('report-stock', 'fa-triangle-exclamation', 'orange', 'Laporan Stok', 'Pantau barang menipis dan habis')}
         </section>`;
     } catch (e) { showError(e); }
   }
 
-  // [ADDED] Laporan barang.
   async function renderReportItems() {
     showLoading();
-
     try {
-      const result = await API.getItems();
-      const items = result.data || [];
-
+      const [res, mv] = await Promise.all([API.getItems(), rangeMovements()]);
+      const items = res.data || [], agg = {};
+      mv.list.filter((m) => m.movement_type === 'OUT').forEach((m) => {
+        const a = agg[m.item_id] || (agg[m.item_id] = { name: m.item_name, unit: m.unit, qty: 0, val: 0 });
+        a.qty += Number(m.quantity); a.val += mValue(m);
+      });
+      const top = Object.values(agg).sort((x, y) => y.qty - x.qty).slice(0, 10);
       content().innerHTML = `
-        <div class="page-heading">
-          <button type="button" class="icon-button" data-action="back-reports" aria-label="Kembali">
-            <i class="fa-solid fa-arrow-left"></i>
-          </button>
-          <h2>Laporan Barang</h2>
-        </div>
-
-        <section class="report-grid">
-          <div class="report-card">
-            <p class="report-label">Total Barang</p>
-            <p class="report-value">${number(items.length)}</p>
-          </div>
-          <div class="report-card">
-            <p class="report-label">Barang Menipis</p>
-            <p class="report-value text-orange">
-              ${items.filter((item) => Number(item.current_stock) <= Number(item.minimum_stock)).length}
-            </p>
-          </div>
-        </section>
-
-        <section class="item-list mt-16">
-          ${items.length
-            ? items.map(itemRow).join('')
-            : `<div class="card">${emptyState('Belum ada barang')}</div>`}
-        </section>
-      `;
-    } catch (error) {
-      showError(error);
-    }
+        <div class="page-heading"><button type="button" class="icon-button" data-action="back-reports" aria-label="Kembali"><i class="fa-solid fa-arrow-left"></i></button><h2>Laporan Barang</h2><span style="width:40px"></span></div>
+        ${rangeFilter()}
+        <section class="panel mt-12"><div class="panel-head"><h3>Terbanyak Keluar</h3><span class="count-badge">${top.length}</span></div>
+          <div class="panel-body">${top.length ? top.map((a, i) => `<div class="rank-row"><span class="rank-no">${i + 1}</span><div class="item-info"><p class="item-name">${escapeHtml(a.name || '-')}</p><p class="item-price">${money(a.val)}</p></div><b>${number(a.qty)} ${escapeHtml(a.unit || '')}</b></div>`).join('') : emptyState('Belum ada barang keluar pada periode ini', 'fa-box-open')}</div>${truncNote(mv)}</section>
+        <div class="section-heading"><h3>Stok Terkini</h3><span class="count-badge">${items.length}</span></div>
+        <section class="item-list">${items.length ? items.map(itemRow).join('') : `<div class="card">${emptyState('Belum ada barang')}</div>`}</section>`;
+    } catch (e) { showError(e); }
   }
 
-  // [ADDED] Laporan keuntungan per periode.
+  async function renderMovements() {
+    showLoading();
+    try {
+      const mv = await rangeMovements();
+      const list = mv.list.filter((m) => moveType === 'all' || m.movement_type === moveType);
+      const sum = (t) => mv.list.filter((m) => m.movement_type === t).reduce((a, m) => a + mValue(m), 0);
+      const groups = {};
+      list.forEach((m) => { (groups[iso(new Date(m.occurred_at))] = groups[iso(new Date(m.occurred_at))] || []).push(m); });
+      const dayLabel = (k) => new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(k + 'T12:00:00'));
+      const tabs = [['all', 'Semua'], ['IN', 'Masuk'], ['OUT', 'Keluar']];
+      content().innerHTML = `
+        <div class="page-heading"><button type="button" class="icon-button" data-action="go-back" aria-label="Kembali"><i class="fa-solid fa-arrow-left"></i></button><h2>Riwayat Transaksi</h2><span style="width:40px"></span></div>
+        ${rangeFilter()}
+        <div class="stat-grid three mt-12">
+          <div class="mini-stat blue"><span>Transaksi</span><strong>${mv.list.length}</strong><small>pada periode</small></div>
+          <div class="mini-stat green"><span>Nilai Masuk</span><strong>${money(sum('IN'))}</strong></div>
+          <div class="mini-stat red"><span>Nilai Keluar</span><strong>${money(sum('OUT'))}</strong></div>
+        </div>
+        <div class="chip-scroll mt-12">${tabs.map(([k, l]) => `<button type="button" class="filter-chip ${moveType === k ? 'active' : ''}" data-action="move-type" data-type="${k}">${l}</button>`).join('')}</div>
+        ${truncNote(mv)}
+        ${Object.keys(groups).sort().reverse().map((k) => `<div class="day-head"><b>${dayLabel(k)}</b><span>${groups[k].length} transaksi</span></div><section class="card movement-list">${groups[k].map(movementRow).join('')}</section>`).join('') || `<div class="card mt-12">${emptyState('Tidak ada transaksi pada periode ini', 'fa-clock-rotate-left')}</div>`}`;
+    } catch (e) { showError(e); }
+  }
+
   async function renderReportProfit() {
     showLoading();
     try {
-      const [a, b] = monthRange(reportMonth), data = (await API.getMovementReport(a, b)).data, d = byDay(await monthMovements());
-      const out = Number(data.total_outgoing_value), cost = Number(data.total_out_cost_value), pr = Number(data.estimated_profit), margin = out ? Math.round(pr / out * 100) : 0;
+      const [rep, mv] = await Promise.all([API.getMovementReport(range.start, range.end), rangeMovements()]);
+      const data = rep.data, out = Number(data.total_outgoing_value), cost = Number(data.total_out_cost_value), pr = Number(data.estimated_profit), margin = out ? Math.round(pr / out * 100) : 0;
       content().innerHTML = `
         <div class="page-heading"><button type="button" class="icon-button" data-action="back-reports" aria-label="Kembali"><i class="fa-solid fa-arrow-left"></i></button><h2>Laporan Keuntungan</h2><span style="width:40px"></span></div>
-        ${monthPicker()}
+        ${rangeFilter()}
         <div class="profit-box mt-12"><div><span>Estimasi Keuntungan</span><strong>${money(pr)}</strong></div><div><span>Margin</span><strong>${margin}%</strong></div></div>
-        <section class="card mt-12"><p class="card-title">Nilai Barang Keluar (kumulatif)</p>${lineChart(d)}</section>
+        <section class="card mt-12"><p class="card-title">Nilai Barang Keluar (kumulatif)</p>${lineChart(buckets(mv.list))}${chartAxis()}${truncNote(mv)}</section>
         <div class="section-heading"><h3>Detail</h3></div>
         <section class="card"><table class="detail-table"><tbody>
           <tr><td>Total Nilai Keluar</td><td>${money(out)}</td></tr>
@@ -829,8 +833,6 @@ window.ExGudangPages = (() => {
         <p class="form-hint mt-12">Estimasi laba kotor belum dikurangi biaya operasional.</p>`;
     } catch (e) { showError(e); }
   }
-
-  const applyProfitPeriod = () => render('report-profit');
 
   // [ADDED] Laporan stok menipis dan habis.
   async function renderReportStock() {
@@ -888,6 +890,8 @@ window.ExGudangPages = (() => {
 
   // [ADDED] Fungsi publik untuk navigasi aplikasi.
   async function render(page, params = {}) {
+    if (page !== activeView.page) prevView = activeView;
+    activeView = { page, params };
     switch (page) {
       case 'home':
         return renderHome();
@@ -909,6 +913,8 @@ window.ExGudangPages = (() => {
         return renderReportProfit();
       case 'report-stock':
         return renderReportStock();
+      case 'movements':
+        return renderMovements();
       default:
         return renderHome();
     }
@@ -918,7 +924,7 @@ window.ExGudangPages = (() => {
   async function handleAction(action, id, element) {
     switch (action) {
       case 'reload':
-        return render(window.ExGudangApp.currentPage);
+        return rerender();
       case 'create-item':
         return render('item-form');
       case 'detail':
@@ -939,7 +945,16 @@ window.ExGudangPages = (() => {
       case 'low-stock':
         return render('report-stock');
       case 'all-movements':
-        return render('report-profit');
+        return render('movements');
+      case 'go-back':
+        return render(prevView.page, prevView.params);
+      case 'range-preset':
+        return setPreset(element.dataset.preset);
+      case 'apply-range':
+        return applyRange();
+      case 'move-type':
+        moveType = element.dataset.type;
+        return rerender();
       case 'report-items':
         return render('report-items');
       case 'report-profit':
@@ -947,7 +962,7 @@ window.ExGudangPages = (() => {
       case 'report-stock':
         return render('report-stock');
       case 'apply-profit-period':
-        return applyProfitPeriod();
+        return rerender();
       case 'stock-report-filter':
         return filterStockReport(element.dataset.filter);
       case 'deactivate-item': {
