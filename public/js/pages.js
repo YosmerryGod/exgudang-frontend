@@ -213,7 +213,7 @@ window.ExGudangPages = (() => {
   const monthPicker = () => `<label class="month-select"><i class="fa-regular fa-calendar"></i><span>${monthName(reportMonth)}</span><i class="fa-solid fa-chevron-down"></i><input type="month" id="report-month" value="${reportMonth}"></label>`;
   async function monthMovements() {
     const [a, b] = monthRange(reportMonth);
-    const r = await API.getRecentMovements(500);
+    const r = await API.getRecentMovements(100);
     return (r.data || []).filter((m) => { const d = String(m.occurred_at).slice(0, 10); return d >= a && d <= b; });
   }
   const mValue = (m) => Number(m.total_value ?? Number(m.quantity) * Number(m.unit_outgoing_price ?? m.unit_cost ?? 0));
