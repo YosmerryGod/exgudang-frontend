@@ -242,26 +242,50 @@ window.ExGudangPages = (() => {
   async function renderHome() {
     showLoading();
     try {
-      const d = (await API.getDashboard()).data, sm = d.summary, st = sm.stock, day = sm.daily || sm.today || sm.monthly, alerts = d.stock_alerts || [];
+      const d = (await API.getDashboard()).data, sm = d.summary, st = sm.stock, mo = sm.monthly, day = sm.daily || sm.today || mo;
+      const alerts = d.stock_alerts || [], moves = d.recent_movements || [];
+      const user = (API.getAdmin() || {}).username;
+      const alertRow = (i) => `<button type="button" class="item-row" data-action="detail" data-id="${Number(i.id)}" style="width:100%;text-align:left;color:inherit">
+        ${itemImage(i)}<div class="item-info"><p class="item-name">${escapeHtml(i.name)}</p><p class="item-code">${escapeHtml(i.code || '')}</p>
+        <p class="item-stock">Stok: ${number(i.current_stock)} ${escapeHtml(i.unit)}</p></div>
+        <div class="item-side">${statusFor(i)}<span class="min-label">Min. ${number(i.minimum_stock)} ${escapeHtml(i.unit)}</span></div></button>`;
       content().innerHTML = `
-        ${heroCard(st.total_items)}
+        <section class="hero-pro">
+          <div class="hero-top"><div><p>${user ? 'Halo, ' + escapeHtml(user) : 'Ringkasan Gudang'}</p><h2>Total Barang</h2></div><strong>${number(st.total_items)}</strong></div>
+          <div class="hero-meta">
+            <div><span>Total Stok</span><b>${number(st.total_stock_units ?? 0)}</b></div>
+            <div><span>Nilai Stok</span><b>${money(st.total_stock_cost_value ?? 0)}</b></div>
+            <div><span>Stok Habis</span><b>${number(st.empty_stock_items ?? 0)}</b></div>
+          </div>
+        </section>
+
         <div class="stat-grid three mt-12">
-          <div class="mini-stat green"><span>Stok Masuk</span><strong>+ ${number(day.total_in_quantity)}</strong><small>hari ini</small></div>
-          <div class="mini-stat red"><span>Stok Keluar</span><strong>- ${number(day.total_out_quantity)}</strong><small>hari ini</small></div>
+          <div class="mini-stat green"><span>Masuk</span><strong>+ ${number(day.total_in_quantity)}</strong><small>hari ini</small></div>
+          <div class="mini-stat red"><span>Keluar</span><strong>- ${number(day.total_out_quantity)}</strong><small>hari ini</small></div>
           <div class="mini-stat orange"><span>Menipis</span><strong>${number(st.low_stock_items)}</strong><small>barang</small></div>
         </div>
-        <div class="section-heading"><h3>Stok Menipis</h3>
-          <button type="button" class="text-link" data-action="low-stock">Lihat Semua <i class="fa-solid fa-chevron-right"></i></button></div>
-        <section class="item-list">
-          ${alerts.length ? alerts.map((i) => `<button type="button" class="item-row" data-action="detail" data-id="${Number(i.id)}" style="width:100%;text-align:left;color:inherit">
-            ${itemImage(i)}<div class="item-info"><p class="item-name">${escapeHtml(i.name)}</p><p class="item-stock">Stok: ${number(i.current_stock)} ${escapeHtml(i.unit)}</p></div>
-            <span class="min-label">Min. ${number(i.minimum_stock)} ${escapeHtml(i.unit)}</span></button>`).join('')
-            : `<div class="card">${emptyState('Semua stok masih aman', 'fa-circle-check')}</div>`}
+
+        <div class="info-row mt-12">
+          <div class="info-card"><span>Laba Bulan Ini</span><b class="text-green">${money(mo.estimated_profit)}</b></div>
+          <div class="info-card"><span>Barang Keluar Bulan Ini</span><b>${money(mo.total_outgoing_value)}</b></div>
+        </div>
+
+        <section class="panel mt-16">
+          <div class="panel-head"><h3>Stok Menipis</h3><span class="count-badge">${alerts.length}</span>
+            <button type="button" class="text-link" data-action="low-stock">Lihat Semua <i class="fa-solid fa-chevron-right"></i></button></div>
+          <div class="panel-body">${alerts.length ? alerts.map(alertRow).join('') : emptyState('Semua stok masih aman', 'fa-circle-check')}</div>
         </section>
-        <div class="button-row mt-16">
+
+        <div class="button-row mt-12">
           <button type="button" class="button" data-action="stock-in"><i class="fa-solid fa-plus"></i> Barang Masuk</button>
           <button type="button" class="button button-danger" data-action="stock-out"><i class="fa-solid fa-minus"></i> Barang Keluar</button>
-        </div>`;
+        </div>
+
+        <section class="panel mt-16">
+          <div class="panel-head"><h3>Transaksi Terbaru</h3><span class="count-badge">${moves.length}</span>
+            <button type="button" class="text-link" data-action="all-movements">Lihat Semua <i class="fa-solid fa-chevron-right"></i></button></div>
+          <div class="panel-body">${moves.length ? moves.map(movementRow).join('') : emptyState('Belum ada transaksi', 'fa-clock-rotate-left')}</div>
+        </section>`;
     } catch (e) { showError(e); }
   }
 
@@ -535,7 +559,7 @@ window.ExGudangPages = (() => {
             <button type="button" class="button button-outline-danger" data-action="deactivate-item" data-id="${Number(i.id)}"><i class="fa-regular fa-trash-can"></i> Hapus</button></div>
         </section>
         <div class="section-heading"><h3>Riwayat Transaksi</h3><button type="button" class="text-link" data-action="all-movements">Lihat Semua <i class="fa-solid fa-chevron-right"></i></button></div>
-        <section class="card movement-list">${(mr.data || []).length ? mr.data.map(movementRow).join('') : emptyState('Belum ada riwayat transaksi', 'fa-clock-rotate-left')}</section>`;
+        <section class="card movement-list scroll-box">${(mr.data || []).length ? mr.data.map(movementRow).join('') : emptyState('Belum ada riwayat transaksi', 'fa-clock-rotate-left')}</section>`;
     } catch (e) { showError(e); }
   }
 
