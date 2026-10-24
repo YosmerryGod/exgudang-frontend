@@ -1258,3 +1258,30 @@ img {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ===== Penyesuaian sesuai referensi ===== */
+.stat-grid.three{grid-template-columns:repeat(3,1fr);gap:8px}
+.mini-stat{border-radius:12px;padding:10px 8px;display:flex;flex-direction:column;gap:2px}
+.mini-stat span,.mini-stat small{font-size:11px}
+.mini-stat strong{font-size:19px;font-weight:800}
+.mini-stat.green{background:var(--green-light);color:var(--green)}
+.mini-stat.red{background:var(--red-light);color:var(--red)}
+.mini-stat.orange{background:var(--orange-light);color:var(--orange)}
+.min-label{color:var(--red);font-size:11px;font-weight:600;white-space:nowrap}
+.detail-value.tile-green{background:var(--green-light)}
+.detail-value.tile-green strong,.detail-value.tile-green span{color:var(--green)}
+.detail-value.tile-red{background:var(--red-light)}
+.detail-value.tile-red strong,.detail-value.tile-red span{color:var(--red)}
+.photo-box{display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--border);border-radius:12px;color:var(--muted);font-size:12px}
+.photo-box i{width:52px;height:44px;display:grid;place-items:center;background:#eef1f3;border-radius:10px;font-size:18px}
+.highlight-box{background:var(--green-soft);border:1.5px solid var(--green);border-radius:12px;padding:10px}
+.month-select{position:relative;display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.month-select span{flex:1;font-weight:500}
+.month-select input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
+.chart-svg{width:100%;height:auto;display:block}
+.legend{font-size:11px;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin:0 4px 0 8px}
+.dot.g{background:var(--green)}.dot.r{background:var(--red)}
+.profit-box{display:grid;grid-template-columns:2fr 1fr;gap:8px;background:var(--green-light);border-radius:12px;padding:12px}
+.profit-box span{display:block;font-size:11px;color:var(--green)}
+.profit-box strong{font-size:18px;font-weight:800;color:var(--green)}

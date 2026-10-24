@@ -206,93 +206,63 @@ window.ExGudangPages = (() => {
     `;
   }
 
+  // Helper laporan: bulan, agregasi harian, grafik SVG.
+  let reportMonth = today().slice(0, 7);
+  const monthName = (m) => new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(new Date(m + '-01T12:00:00'));
+  const monthRange = (m) => { const [y, mo] = m.split('-').map(Number); return [m + '-01', `${m}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`]; };
+  const monthPicker = () => `<label class="month-select"><i class="fa-regular fa-calendar"></i><span>${monthName(reportMonth)}</span><i class="fa-solid fa-chevron-down"></i><input type="month" id="report-month" value="${reportMonth}"></label>`;
+  async function monthMovements() {
+    const [a, b] = monthRange(reportMonth);
+    const r = await API.getRecentMovements(500);
+    return (r.data || []).filter((m) => { const d = String(m.occurred_at).slice(0, 10); return d >= a && d <= b; });
+  }
+  const mValue = (m) => Number(m.total_value ?? Number(m.quantity) * Number(m.unit_outgoing_price ?? m.unit_cost ?? 0));
+  function byDay(list) {
+    const days = new Date(+reportMonth.slice(0, 4), +reportMonth.slice(5), 0).getDate();
+    const d = Array.from({ length: days }, () => ({ in: 0, out: 0, val: 0 }));
+    list.forEach((m) => { const i = new Date(m.occurred_at).getDate() - 1; if (!d[i]) return;
+      if (m.movement_type === 'IN') d[i].in += Number(m.quantity);
+      if (m.movement_type === 'OUT') { d[i].out += Number(m.quantity); d[i].val += mValue(m); } });
+    return d;
+  }
+  function barChart(d) {
+    const max = Math.max(1, ...d.map((x) => Math.max(x.in, x.out))), w = 300 / d.length;
+    return `<svg viewBox="0 0 300 112" class="chart-svg">${d.map((x, i) => `<rect x="${i * w + 0.5}" y="${100 - 90 * x.in / max}" width="${w / 2 - 0.5}" height="${90 * x.in / max}" fill="#07864f"/><rect x="${i * w + w / 2}" y="${100 - 90 * x.out / max}" width="${w / 2 - 0.5}" height="${90 * x.out / max}" fill="#e62e43"/>`).join('')}<line x1="0" x2="300" y1="100" y2="100" stroke="#e9edf0"/><text x="0" y="110" font-size="7" fill="#7d8792">1</text><text x="290" y="110" font-size="7" fill="#7d8792">${d.length}</text></svg>`;
+  }
+  function lineChart(d) {
+    let c = 0; const pts = d.map((x) => (c += x.val)); const max = Math.max(1, c), w = 300 / (d.length - 1 || 1);
+    const p = pts.map((v, i) => `${i * w},${100 - 90 * v / max}`).join(' ');
+    return `<svg viewBox="0 0 300 104" class="chart-svg"><polygon points="0,100 ${p} 300,100" fill="#e8f7ef"/><polyline points="${p}" fill="none" stroke="#07864f" stroke-width="1.8"/><line x1="0" x2="300" y1="100" y2="100" stroke="#e9edf0"/></svg>`;
+  }
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'report-month' && e.target.value) { reportMonth = e.target.value; render(window.ExGudangApp.currentPage); }
+  });
+
   // [ADDED] Beranda berdasarkan dashboard API.
   async function renderHome() {
     showLoading();
-
     try {
-      const [dashboardResult, itemsResult] = await Promise.all([
-        API.getDashboard(),
-        API.getItems()
-      ]);
-
-      cachedDashboard = dashboardResult.data;
-      cachedItems = itemsResult.data || [];
-
-      const summary = cachedDashboard.summary;
-      const stock = summary.stock;
-      const monthly = summary.monthly;
-      const movements = cachedDashboard.recent_movements || [];
-      const alerts = cachedDashboard.stock_alerts || [];
-
+      const d = (await API.getDashboard()).data, sm = d.summary, st = sm.stock, day = sm.daily || sm.today || sm.monthly, alerts = d.stock_alerts || [];
       content().innerHTML = `
-        ${heroCard(stock.total_items)}
-
-        <div class="stat-grid mt-12">
-          ${statCard(
-            'fa-arrow-down',
-            'Stok Masuk Bulan Ini',
-            `+${number(monthly.total_in_quantity)}`,
-            'green'
-          )}
-          ${statCard(
-            'fa-arrow-up',
-            'Stok Keluar Bulan Ini',
-            `-${number(monthly.total_out_quantity)}`,
-            'red'
-          )}
-          ${statCard(
-            'fa-triangle-exclamation',
-            'Stok Menipis',
-            number(stock.low_stock_items),
-            'orange'
-          )}
-          ${statCard(
-            'fa-coins',
-            'Estimasi Laba',
-            money(monthly.estimated_profit),
-            'blue'
-          )}
+        ${heroCard(st.total_items)}
+        <div class="stat-grid three mt-12">
+          <div class="mini-stat green"><span>Stok Masuk</span><strong>+ ${number(day.total_in_quantity)}</strong><small>hari ini</small></div>
+          <div class="mini-stat red"><span>Stok Keluar</span><strong>- ${number(day.total_out_quantity)}</strong><small>hari ini</small></div>
+          <div class="mini-stat orange"><span>Menipis</span><strong>${number(st.low_stock_items)}</strong><small>barang</small></div>
         </div>
-
-        <div class="section-heading">
-          <h3>Stok Menipis</h3>
-          <button type="button" class="text-link" data-action="low-stock">
-            Lihat Semua <i class="fa-solid fa-chevron-right"></i>
-          </button>
-        </div>
-
+        <div class="section-heading"><h3>Stok Menipis</h3>
+          <button type="button" class="text-link" data-action="low-stock">Lihat Semua <i class="fa-solid fa-chevron-right"></i></button></div>
         <section class="item-list">
-          ${alerts.length
-            ? alerts.map((item) => itemRow(item)).join('')
+          ${alerts.length ? alerts.map((i) => `<button type="button" class="item-row" data-action="detail" data-id="${Number(i.id)}" style="width:100%;text-align:left;color:inherit">
+            ${itemImage(i)}<div class="item-info"><p class="item-name">${escapeHtml(i.name)}</p><p class="item-stock">Stok: ${number(i.current_stock)} ${escapeHtml(i.unit)}</p></div>
+            <span class="min-label">Min. ${number(i.minimum_stock)} ${escapeHtml(i.unit)}</span></button>`).join('')
             : `<div class="card">${emptyState('Semua stok masih aman', 'fa-circle-check')}</div>`}
         </section>
-
         <div class="button-row mt-16">
-          <button type="button" class="button" data-action="stock-in">
-            <i class="fa-solid fa-plus"></i> Barang Masuk
-          </button>
-          <button type="button" class="button button-danger" data-action="stock-out">
-            <i class="fa-solid fa-minus"></i> Barang Keluar
-          </button>
-        </div>
-
-        <div class="section-heading">
-          <h3>Transaksi Terbaru</h3>
-          <button type="button" class="text-link" data-action="all-movements">
-            Lihat Semua <i class="fa-solid fa-chevron-right"></i>
-          </button>
-        </div>
-
-        <section class="card movement-list">
-          ${movements.length
-            ? movements.map(movementRow).join('')
-            : emptyState('Belum ada transaksi', 'fa-clock-rotate-left')}
-        </section>
-      `;
-    } catch (error) {
-      showError(error);
-    }
+          <button type="button" class="button" data-action="stock-in"><i class="fa-solid fa-plus"></i> Barang Masuk</button>
+          <button type="button" class="button button-danger" data-action="stock-out"><i class="fa-solid fa-minus"></i> Barang Keluar</button>
+        </div>`;
+    } catch (e) { showError(e); }
   }
 
   // [ADDED] Daftar barang, pencarian dan filter.
@@ -381,6 +351,7 @@ window.ExGudangPages = (() => {
         </div>
 
         <form id="item-form" class="card form-stack">
+          <div class="photo-box"><i class="fa-solid fa-camera"></i><span>Foto Barang (opsional)</span></div>
           <div class="form-group">
             <label>Nama Barang <span class="required">*</span></label>
             <input class="input" name="name" required maxlength="150"
@@ -422,7 +393,7 @@ window.ExGudangPages = (() => {
             </div>
           ` : ''}
 
-          <div class="form-grid">
+          <div class="form-grid highlight-box">
             <div class="form-group">
               <label>Harga Modal <span class="required">*</span></label>
               <div class="input-with-suffix">
@@ -538,98 +509,34 @@ window.ExGudangPages = (() => {
   // [ADDED] Detail barang beserta riwayat.
   async function renderItemDetail(id) {
     showLoading();
-
     try {
-      const [itemResult, movementsResult] = await Promise.all([
-        API.getItem(id),
-        API.getItemMovements(id, 10, 0)
-      ]);
-
-      const item = itemResult.data;
-      selectedItemId = item.id;
-
+      const [ir, mr] = await Promise.all([API.getItem(id), API.getItemMovements(id, 5, 0)]);
+      const i = ir.data; selectedItemId = i.id;
+      const profit = Number(i.outgoing_price) - Number(i.cost_price), pct = Number(i.cost_price) ? Math.round(profit / Number(i.cost_price) * 100) : 0;
       content().innerHTML = `
-        <div class="page-heading">
-          <button type="button" class="icon-button" data-action="back-items" aria-label="Kembali">
-            <i class="fa-solid fa-arrow-left"></i>
-          </button>
-          <h2>Detail Barang</h2>
-          <button type="button" class="icon-button" data-action="edit-item" data-id="${Number(item.id)}" aria-label="Edit">
-            <i class="fa-solid fa-pen"></i>
-          </button>
+        <div class="page-heading"><button type="button" class="icon-button" data-action="back-items" aria-label="Kembali"><i class="fa-solid fa-arrow-left"></i></button>
+          <h2>Detail Barang</h2><span style="width:40px"></span></div>
+        <div class="product-detail-head">${itemImage(i)}<div><h2>${escapeHtml(i.name)}</h2><p>${escapeHtml(i.code)}</p>${statusFor(i)}</div></div>
+        <div class="detail-grid">
+          <div class="detail-value tile-green"><span>Stok Saat Ini</span><strong>${number(i.current_stock)} ${escapeHtml(i.unit)}</strong></div>
+          <div class="detail-value tile-red"><span>Stok Minimum</span><strong>${number(i.minimum_stock)} ${escapeHtml(i.unit)}</strong></div>
         </div>
-
-        <section class="card">
-          <div class="product-detail-head">
-            ${itemImage(item)}
-            <div>
-              <h2>${escapeHtml(item.name)}</h2>
-              <p>${escapeHtml(item.code)}</p>
-              ${statusFor(item)}
-            </div>
-          </div>
-
-          <div class="detail-grid">
-            <div class="detail-value">
-              <span>Stok Saat Ini</span>
-              <strong>${number(item.current_stock)} ${escapeHtml(item.unit)}</strong>
-            </div>
-            <div class="detail-value ${item.is_low_stock ? 'warning' : ''}">
-              <span>Stok Minimum</span>
-              <strong>${number(item.minimum_stock)} ${escapeHtml(item.unit)}</strong>
-            </div>
-          </div>
-
-          <div class="detail-grid">
-            <div class="detail-value">
-              <span>Harga Modal</span>
-              <strong>${money(item.cost_price)}</strong>
-            </div>
-            <div class="detail-value">
-              <span>Harga Keluar</span>
-              <strong>${money(item.outgoing_price)}</strong>
-            </div>
-          </div>
-
-          <div class="row-between mt-12">
-            <button type="button" class="button" data-action="stock-in" data-id="${Number(item.id)}">
-              <i class="fa-solid fa-plus"></i> Stok Masuk
-            </button>
-            <button type="button" class="button button-danger" data-action="stock-out" data-id="${Number(item.id)}">
-              <i class="fa-solid fa-minus"></i> Stok Keluar
-            </button>
-          </div>
-
-          <table class="detail-table mt-16">
-            <tbody>
-              <tr><td>Kategori</td><td>${escapeHtml(item.category_name || '-')}</td></tr>
-              <tr><td>Satuan</td><td>${escapeHtml(item.unit)}</td></tr>
-              <tr><td>Stok Awal</td><td>${number(item.initial_stock)} ${escapeHtml(item.unit)}</td></tr>
-              <tr><td>Nilai Modal Stok</td><td>${money(item.stock_cost_value)}</td></tr>
-              <tr><td>Estimasi Nilai Jual</td><td>${money(item.stock_outgoing_value)}</td></tr>
-              <tr><td>Deskripsi</td><td>${escapeHtml(item.description || '-')}</td></tr>
-            </tbody>
-          </table>
+        <section class="card mt-12"><div class="detail-grid">
+          <div class="detail-value"><span>Harga Modal</span><strong>${money(i.cost_price)}</strong></div>
+          <div class="detail-value"><span>Harga Keluar</span><strong>${money(i.outgoing_price)}</strong></div></div>
+          <div class="detail-value tile-green mt-12"><span>Estimasi Untung</span><strong>${money(profit)} (${pct}%)</strong></div>
+          <table class="detail-table mt-12"><tbody>
+            <tr><td>Kategori</td><td>${escapeHtml(i.category_name || '-')}</td></tr>
+            <tr><td>Satuan</td><td>${escapeHtml(i.unit)}</td></tr>
+            <tr><td>Supplier</td><td>${escapeHtml(i.supplier || '-')}</td></tr>
+            <tr><td>Stok Awal</td><td>${number(i.initial_stock)} ${escapeHtml(i.unit)}</td></tr></tbody></table>
+          <div class="button-row mt-12">
+            <button type="button" class="button" data-action="edit-item" data-id="${Number(i.id)}"><i class="fa-solid fa-pen"></i> Edit</button>
+            <button type="button" class="button button-outline-danger" data-action="deactivate-item" data-id="${Number(i.id)}"><i class="fa-regular fa-trash-can"></i> Hapus</button></div>
         </section>
-
-        <div class="section-heading">
-          <h3>Riwayat Transaksi</h3>
-        </div>
-
-        <section class="card movement-list">
-          ${(movementsResult.data || []).length
-            ? movementsResult.data.map(movementRow).join('')
-            : emptyState('Belum ada riwayat transaksi', 'fa-clock-rotate-left')}
-        </section>
-
-        <button type="button" class="button button-outline-danger button-block mt-16"
-                data-action="deactivate-item" data-id="${Number(item.id)}">
-          <i class="fa-regular fa-trash-can"></i> Nonaktifkan Barang
-        </button>
-      `;
-    } catch (error) {
-      showError(error);
-    }
+        <div class="section-heading"><h3>Riwayat Transaksi</h3><button type="button" class="text-link" data-action="all-movements">Lihat Semua <i class="fa-solid fa-chevron-right"></i></button></div>
+        <section class="card movement-list">${(mr.data || []).length ? mr.data.map(movementRow).join('') : emptyState('Belum ada riwayat transaksi', 'fa-clock-rotate-left')}</section>`;
+    } catch (e) { showError(e); }
   }
 
   // [ADDED] Form transaksi stok masuk/keluar.
@@ -815,87 +722,28 @@ window.ExGudangPages = (() => {
   // [ADDED] Laporan ringkas.
   async function renderReports() {
     showLoading();
-
     try {
-      const result = await API.getReportSummary();
-      const stock = result.data;
-
-      activeReport = 'summary';
-
+      const st = (await API.getReportSummary()).data, list = await monthMovements(), d = byDay(list);
+      const tin = d.reduce((a, x) => a + x.in, 0), tout = d.reduce((a, x) => a + x.out, 0);
+      const tile = (ic, c, l, v) => `<div class="stat-card stat-${c}"><div class="stat-icon"><i class="fa-solid ${ic}"></i></div><div class="stat-content"><p class="stat-label">${l}</p><p class="stat-number">${v}</p></div></div>`;
+      const link = (a, ic, col, t, sub) => `<button type="button" class="item-row" data-action="${a}"><div class="stat-icon" style="color:var(--${col});background:var(--${col}-light)"><i class="fa-solid ${ic}"></i></div><div class="item-info"><p class="item-name">${t}</p><p class="item-price">${sub}</p></div><i class="fa-solid fa-chevron-right text-muted"></i></button>`;
       content().innerHTML = `
-        <div class="page-heading">
-          <h2>Laporan</h2>
-        </div>
-
-        <section class="report-grid">
-          <div class="report-card">
-            <p class="report-label">Total Barang</p>
-            <p class="report-value">${number(stock.total_items)}</p>
-          </div>
-          <div class="report-card">
-            <p class="report-label">Jumlah Stok</p>
-            <p class="report-value">${number(stock.total_stock_units)}</p>
-          </div>
-          <div class="report-card">
-            <p class="report-label">Nilai Modal Stok</p>
-            <p class="report-value text-green">${money(stock.total_stock_cost_value)}</p>
-          </div>
-          <div class="report-card">
-            <p class="report-label">Estimasi Nilai Jual</p>
-            <p class="report-value">${money(stock.total_stock_outgoing_value)}</p>
-          </div>
-          <div class="report-card">
-            <p class="report-label">Stok Menipis</p>
-            <p class="report-value text-orange">${number(stock.low_stock_items)} barang</p>
-          </div>
-          <div class="report-card">
-            <p class="report-label">Stok Habis</p>
-            <p class="report-value text-red">${number(stock.empty_stock_items)} barang</p>
-          </div>
+        <div class="page-heading"><h2>Laporan</h2></div>${monthPicker()}
+        <section class="stat-grid mt-12">
+          ${tile('fa-cube', 'green', 'Total Barang', number(st.total_items))}
+          ${tile('fa-database', 'blue', 'Nilai Stok', money(st.total_stock_cost_value))}
+          ${tile('fa-arrow-trend-up', 'green', 'Total Masuk', '+ ' + number(tin))}
+          ${tile('fa-box-archive', 'red', 'Total Keluar', '- ' + number(tout))}
         </section>
-
-        <div class="section-heading">
-          <h3>Jenis Laporan</h3>
-        </div>
-
+        <div class="section-heading"><h3>Pergerakan Stok</h3><span class="legend"><i class="dot g"></i>Masuk <i class="dot r"></i>Keluar</span></div>
+        <section class="card">${list.length ? barChart(d) : emptyState('Belum ada pergerakan bulan ini', 'fa-chart-column')}</section>
+        <div class="section-heading"><h3>Jenis Laporan</h3></div>
         <section class="item-list">
-          <button type="button" class="item-row" data-action="report-items">
-            <div class="stat-icon" style="color:var(--green);background:var(--green-light)">
-              <i class="fa-solid fa-boxes-stacked"></i>
-            </div>
-            <div class="item-info">
-              <p class="item-name">Laporan Barang</p>
-              <p class="item-price">Daftar barang dan stok terkini</p>
-            </div>
-            <i class="fa-solid fa-chevron-right text-muted"></i>
-          </button>
-
-          <button type="button" class="item-row" data-action="report-profit">
-            <div class="stat-icon" style="color:var(--blue);background:var(--blue-light)">
-              <i class="fa-solid fa-chart-line"></i>
-            </div>
-            <div class="item-info">
-              <p class="item-name">Laporan Keuntungan</p>
-              <p class="item-price">Ringkasan transaksi dan estimasi laba kotor</p>
-            </div>
-            <i class="fa-solid fa-chevron-right text-muted"></i>
-          </button>
-
-          <button type="button" class="item-row" data-action="report-stock">
-            <div class="stat-icon" style="color:var(--orange);background:var(--orange-light)">
-              <i class="fa-solid fa-triangle-exclamation"></i>
-            </div>
-            <div class="item-info">
-              <p class="item-name">Laporan Stok</p>
-              <p class="item-price">Pantau barang menipis dan habis</p>
-            </div>
-            <i class="fa-solid fa-chevron-right text-muted"></i>
-          </button>
-        </section>
-      `;
-    } catch (error) {
-      showError(error);
-    }
+          ${link('report-items', 'fa-boxes-stacked', 'green', 'Laporan Barang', 'Daftar barang dan stok terkini')}
+          ${link('report-profit', 'fa-chart-line', 'blue', 'Laporan Keuntungan', 'Estimasi laba kotor')}
+          ${link('report-stock', 'fa-triangle-exclamation', 'orange', 'Laporan Stok', 'Pantau barang menipis dan habis')}
+        </section>`;
+    } catch (e) { showError(e); }
   }
 
   // [ADDED] Laporan barang.
@@ -941,114 +789,24 @@ window.ExGudangPages = (() => {
   // [ADDED] Laporan keuntungan per periode.
   async function renderReportProfit() {
     showLoading();
-
     try {
-      const date = new Date();
-      const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const startDate = `${month}-01`;
-      const endDate = today();
-
-      const result = await API.getMovementReport(startDate, endDate);
-      const data = result.data;
-
+      const [a, b] = monthRange(reportMonth), data = (await API.getMovementReport(a, b)).data, d = byDay(await monthMovements());
+      const out = Number(data.total_outgoing_value), cost = Number(data.total_out_cost_value), pr = Number(data.estimated_profit), margin = out ? Math.round(pr / out * 100) : 0;
       content().innerHTML = `
-        <div class="page-heading">
-          <button type="button" class="icon-button" data-action="back-reports" aria-label="Kembali">
-            <i class="fa-solid fa-arrow-left"></i>
-          </button>
-          <h2>Laporan Keuntungan</h2>
-        </div>
-
-        <section class="card">
-          <div class="form-group">
-            <label>Periode</label>
-            <div class="input-with-suffix">
-              <input class="input" id="profit-start-date" type="date" value="${startDate}">
-              <span class="input-suffix">Mulai</span>
-            </div>
-            <div class="input-with-suffix">
-              <input class="input" id="profit-end-date" type="date" value="${endDate}">
-              <span class="input-suffix">Akhir</span>
-            </div>
-            <button type="button" class="button button-block" data-action="apply-profit-period">
-              Terapkan Periode
-            </button>
-          </div>
-
-          <div class="divider"></div>
-
-          <p class="card-title">Estimasi Keuntungan Kotor</p>
-          <p class="card-value text-green">${money(data.estimated_profit)}</p>
-          <p class="card-subtitle">Periode ${startDate} s/d ${endDate}</p>
-        </section>
-
-        <section class="report-grid mt-16">
-          <div class="report-card">
-            <p class="report-label">Nilai Stok Keluar</p>
-            <p class="report-value">${money(data.total_outgoing_value)}</p>
-          </div>
-          <div class="report-card">
-            <p class="report-label">Modal Barang Keluar</p>
-            <p class="report-value">${money(data.total_out_cost_value)}</p>
-          </div>
-          <div class="report-card">
-            <p class="report-label">Jumlah Masuk</p>
-            <p class="report-value text-green">${number(data.total_in_quantity)}</p>
-          </div>
-          <div class="report-card">
-            <p class="report-label">Jumlah Keluar</p>
-            <p class="report-value text-red">${number(data.total_out_quantity)}</p>
-          </div>
-        </section>
-
-        <p class="form-hint mt-12">
-          Estimasi laba kotor belum dikurangi biaya operasional.
-        </p>
-      `;
-    } catch (error) {
-      showError(error);
-    }
+        <div class="page-heading"><button type="button" class="icon-button" data-action="back-reports" aria-label="Kembali"><i class="fa-solid fa-arrow-left"></i></button><h2>Laporan Keuntungan</h2><span style="width:40px"></span></div>
+        ${monthPicker()}
+        <div class="profit-box mt-12"><div><span>Estimasi Keuntungan</span><strong>${money(pr)}</strong></div><div><span>Margin</span><strong>${margin}%</strong></div></div>
+        <section class="card mt-12"><p class="card-title">Nilai Barang Keluar (kumulatif)</p>${lineChart(d)}</section>
+        <div class="section-heading"><h3>Detail</h3></div>
+        <section class="card"><table class="detail-table"><tbody>
+          <tr><td>Total Nilai Keluar</td><td>${money(out)}</td></tr>
+          <tr><td>Modal Barang Keluar</td><td>${money(cost)}</td></tr>
+          <tr><td>Estimasi Keuntungan</td><td class="text-green">${money(pr)}</td></tr></tbody></table></section>
+        <p class="form-hint mt-12">Estimasi laba kotor belum dikurangi biaya operasional.</p>`;
+    } catch (e) { showError(e); }
   }
 
-  async function applyProfitPeriod() {
-    const startDate = document.getElementById('profit-start-date')?.value;
-    const endDate = document.getElementById('profit-end-date')?.value;
-
-    if (startDate && endDate && startDate > endDate) {
-      window.dispatchEvent(new CustomEvent('exgudang:toast', {
-        detail: {
-          message: 'Tanggal awal tidak boleh melewati tanggal akhir',
-          type: 'error'
-        }
-      }));
-      return;
-    }
-
-    try {
-      const result = await API.getMovementReport(startDate, endDate);
-      const data = result.data;
-
-      const card = content().querySelector('.card');
-      if (card) {
-        const profit = card.querySelector('.card-value');
-        const period = card.querySelector('.card-subtitle');
-
-        if (profit) profit.textContent = money(data.estimated_profit);
-        if (period) period.textContent = `Periode ${startDate || 'awal'} s/d ${endDate || 'sekarang'}`;
-      }
-
-      const cards = content().querySelectorAll('.report-card .report-value');
-
-      if (cards[0]) cards[0].textContent = money(data.total_outgoing_value);
-      if (cards[1]) cards[1].textContent = money(data.total_out_cost_value);
-      if (cards[2]) cards[2].textContent = number(data.total_in_quantity);
-      if (cards[3]) cards[3].textContent = number(data.total_out_quantity);
-    } catch (error) {
-      window.dispatchEvent(new CustomEvent('exgudang:toast', {
-        detail: { message: error.message, type: 'error' }
-      }));
-    }
-  }
+  const applyProfitPeriod = () => render('report-profit');
 
   // [ADDED] Laporan stok menipis dan habis.
   async function renderReportStock() {
