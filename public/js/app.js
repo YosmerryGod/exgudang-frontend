@@ -8,6 +8,30 @@
   const header = document.querySelector('.app-header');
   const bottomNav = document.querySelector('.bottom-nav');
 
+  // [ADDED] Tema terang/gelap tersimpan untuk seluruh aplikasi.
+  const THEME_KEY = 'aigud_theme';
+  function applyTheme(theme) {
+    const nextTheme = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = nextTheme;
+    document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+      const icon = button.querySelector('i');
+      if (icon) icon.className = nextTheme === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+      button.setAttribute('aria-label', nextTheme === 'dark' ? 'Aktifkan mode terang' : 'Aktifkan mode gelap');
+      button.setAttribute('title', nextTheme === 'dark' ? 'Mode terang' : 'Mode gelap');
+    });
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', nextTheme === 'dark' ? '#181d24' : '#e0e5ec');
+  }
+  function toggleTheme() {
+    const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem(THEME_KEY, nextTheme);
+    applyTheme(nextTheme);
+  }
+  applyTheme(localStorage.getItem(THEME_KEY) || 'light');
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('[data-theme-toggle]')) toggleTheme();
+  });
+
   const state = {
     currentPage: 'home',
     currentParams: {},
@@ -109,12 +133,13 @@
 
     content.innerHTML = `
       <section class="login-screen">
+        <button type="button" class="login-theme-toggle" data-theme-toggle aria-label="Aktifkan mode gelap" title="Ganti tema"><i class="fa-solid fa-moon"></i></button>
         <form class="login-card form-stack" id="login-form">
           <div class="login-brand">
             <div class="brand-icon">
               <i class="fa-solid fa-box-open"></i>
             </div>
-            <h2>ExGudang</h2>
+            <h2>AIGUD</h2>
             <p>Masuk untuk mengelola stok pribadimu</p>
           </div>
 
