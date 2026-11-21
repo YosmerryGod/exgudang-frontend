@@ -1,7 +1,8 @@
 // [MODIFIED] Frontend hanya berkomunikasi dengan backend melalui HTTP.
 // Tidak ada koneksi database, SQL, schema, atau kredensial database di browser.
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
+// [MODIFIED] Menggunakan API_URL agar nama variabel Vercel tidak perlu awalan VITE_.
+const API_BASE_URL = (import.meta.env.API_URL || '/api').replace(/\/+$/, '');
 const TOKEN_KEY = 'exgudang_token';
 const ADMIN_KEY = 'exgudang_admin';
 
