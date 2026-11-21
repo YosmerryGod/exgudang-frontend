@@ -4,7 +4,7 @@
 
 Atur variabel berikut pada Vercel Project Settings → Environment Variables:
 
-- `DATABASE_URL`: pooled connection string dari Neon. Aktifkan SSL.
+- `POSTGRES_URL`: pooled connection string dari Neon (sama seperti konfigurasi Xkalkultor). Aktifkan SSL.
 - `JWT_SECRET`: secret acak minimal 32 karakter.
 - `ADMIN_USERNAME`: username admin awal, default `admin`.
 - `ADMIN_PASSWORD`: password admin awal, minimal 10 karakter.
@@ -26,4 +26,4 @@ Frontend memanggil endpoint relatif `/api` pada domain yang sama. Tidak ada lagi
 
 ## Catatan keamanan
 
-Password admin disimpan sebagai bcrypt hash di Neon. Token login ditandatangani dengan `JWT_SECRET`. Jangan membagikan `DATABASE_URL` atau `JWT_SECRET`.
+Password admin disimpan sebagai bcrypt hash di Neon. Token login ditandatangani dengan `JWT_SECRET`. Jangan membagikan `POSTGRES_URL` atau `JWT_SECRET`.
