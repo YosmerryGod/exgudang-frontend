@@ -268,7 +268,7 @@ async function handler(req, res) {
     await ensureSchema();
     const db = getPool();
     const url = new URL(req.url, 'https://exgudang.local');
-    const path = url.pathname.replace(/^\\/api\\/?/, '').replace(/\\/$/, '');
+    const path = url.pathname.replace(/^\/api\/?/, '').replace(/\/$/, '');
     const parts = path.split('/').filter(Boolean);
     const method = req.method.toUpperCase();
 
@@ -439,8 +439,8 @@ async function handler(req, res) {
       if (method === 'GET' && parts[1] === 'movements') {
         const start = url.searchParams.get('startDate');
         const end = url.searchParams.get('endDate');
-        if (start && !/^\\d{4}-\\d{2}-\\d{2}$/.test(start)) fail('Format startDate tidak valid.');
-        if (end && !/^\\d{4}-\\d{2}-\\d{2}$/.test(end)) fail('Format endDate tidak valid.');
+        if (start && !/^\d{4}-\d{2}-\d{2}$/.test(start)) fail('Format startDate tidak valid.');
+        if (end && !/^\d{4}-\d{2}-\d{2}$/.test(end)) fail('Format endDate tidak valid.');
         if (start && end && start > end) fail('startDate tidak boleh melewati endDate.');
         const values = [], conditions = [];
         if (start) { values.push(start); conditions.push('occurred_at::date >= $'+values.length+'::date'); }
