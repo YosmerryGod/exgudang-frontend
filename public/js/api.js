@@ -57,9 +57,13 @@ window.ExGudangAPI = (() => {
         cache: 'no-store',
         signal: controller.signal
       });
-    } catch {
+    } catch (error) {
+      // [MODIFIED] Bedakan timeout dan kegagalan koneksi agar penyebab terlihat di aplikasi.
+      if (error && error.name === 'AbortError') {
+        throw new Error('Request ke server timeout setelah 15 detik. Periksa koneksi atau status API.');
+      }
       throw new Error(
-        'Tidak dapat terhubung ke server. Periksa apakah backend sedang berjalan.'
+        'Gagal menghubungi API: ' + (error && error.message ? error.message : 'koneksi ditolak atau server tidak dapat dijangkau.')
       );
     } finally {
       clearTimeout(timer);
@@ -71,17 +75,29 @@ window.ExGudangAPI = (() => {
     try {
       result = text ? JSON.parse(text) : {};
     } catch {
-      throw new Error('Server mengembalikan respons yang tidak valid.');
+      // [MODIFIED] Tampilkan status HTTP dan cuplikan respons non-JSON (misalnya error Vercel).
+      const contentType = response.headers.get('content-type') || 'tidak diketahui';
+      const responseDetail = text ? text.replace(/\\s+/g, ' ').slice(0, 500) : 'Body respons kosong.';
+      throw new Error(
+        `API mengembalikan respons non-JSON. HTTP ${response.status}; Content-Type: ${contentType}; Detail: ${responseDetail}`
+      );
     }
 
-    if (response.status === 401) {
+    const isLoginRequest = path === '/auth/login';
+
+    // [MODIFIED] Kesalahan kredensial login 401 harus menampilkan pesan API,
+    // bukan dianggap sebagai sesi pengguna yang kedaluwarsa.
+    if (response.status === 401 && !isLoginRequest) {
       clearSession();
       window.dispatchEvent(new CustomEvent('exgudang:unauthorized'));
-      throw new Error('Sesi login berakhir. Silakan login kembali.');
+      throw new Error(result.message || 'Sesi login berakhir. Silakan login kembali.');
     }
 
     if (!response.ok || result.success === false) {
-      throw new Error(result.message || `Permintaan gagal (${response.status}).`);
+      const details = result.detail
+        ? ` Detail: ${result.detail}${result.errorCode ? ` (Kode: ${result.errorCode})` : ''}`
+        : '';
+      throw new Error((result.message || `Permintaan gagal (HTTP ${response.status}).`) + details);
     }
 
     return result;
