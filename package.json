@@ -11,13 +11,12 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "devDependencies": {
     "vite": "^8.3.5"
   },
   "dependencies": {
     "@libsql/client": "^0.15.15",
-    "bcryptjs": "^3.0.3",
-    "jsonwebtoken": "^9.0.2"
+    "bcryptjs": "^3.0.3"
   }
 }
