@@ -532,7 +532,13 @@ async function handler(req, res) {
   } catch (error) {
     const status = error.statusCode || (error.code === 'SQLITE_CONSTRAINT' ? 409 : 500);
     if (status >= 500) console.error('[ExGudang API]',error);
-    return send(res,status,{success:false,message:status >= 500 ? 'Terjadi kesalahan pada server.' : error.message});
+    return send(res,status,{
+      success:false,
+      message:status >= 500 ? 'Terjadi kesalahan pada server.' : error.message,
+      // [ADDED] Tampilkan detail error teknis di aplikasi agar mudah didiagnosis.
+      detail:status >= 500 ? (error.message || 'Tidak ada detail error dari server.') : undefined,
+      errorCode:status >= 500 ? (error.code || error.name || 'SERVER_ERROR') : undefined
+    });
   }
 }
 
