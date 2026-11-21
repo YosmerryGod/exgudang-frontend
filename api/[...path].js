@@ -1,6 +1,10 @@
 'use strict';
 
-const { Pool } = require('pg');
+const { Pool, neonConfig } = require('@neondatabase/serverless');
+const ws = require('ws');
+
+// [MODIFIED] Use the same Neon serverless driver as Xkalkultor.
+neonConfig.webSocketConstructor = ws;
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
@@ -8,10 +12,11 @@ let pool;
 let schemaReady;
 
 function getPool() {
-  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL belum dikonfigurasi.');
+  const databaseUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error('POSTGRES_URL belum dikonfigurasi.');
   if (!pool) {
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: databaseUrl,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
       max: 5,
       idleTimeoutMillis: 10000,
