@@ -119,9 +119,7 @@
   </div>
 
   <!-- [ADDED] JavaScript aplikasi. -->
-  <script src="/js/api.js" defer></script>
-  <script src="/js/pages.js" defer></script>
-  <script src="/js/app.js" defer></script>
+  <script type="module" src="/src/main.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
