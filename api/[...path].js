@@ -83,8 +83,8 @@ async function ensureSchema() {
       \`);
       const username = process.env.ADMIN_USERNAME || 'admin';
       const password = process.env.ADMIN_PASSWORD;
-      if (!password || password.length < 12) {
-        throw new Error('ADMIN_PASSWORD wajib diatur minimal 12 karakter pada environment Vercel.');
+      if (!password || password.length < 10) {
+        throw new Error('ADMIN_PASSWORD wajib diatur minimal 10 karakter pada environment Vercel.');
       }
       const existing = await db.query('SELECT id FROM admins LIMIT 1');
       if (existing.rowCount === 0) {
