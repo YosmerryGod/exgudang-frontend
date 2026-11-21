@@ -362,7 +362,7 @@ async function handler(req, res) {
         const description = req.body.description === undefined ? current.rows[0].description : req.body.description;
         if (!name) fail('Nama kategori wajib diisi.');
         await execute(
-          'UPDATE categories SET name=?,description=?,updated_at=datetime(\\'now\\') WHERE id=?',
+          'UPDATE categories SET name=?,description=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
           [name, description, id]
         );
         const updated = await execute('SELECT * FROM categories WHERE id=?', [id]);
