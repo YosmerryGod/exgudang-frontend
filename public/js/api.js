@@ -77,7 +77,7 @@ window.ExGudangAPI = (() => {
     } catch {
       // [MODIFIED] Tampilkan status HTTP dan cuplikan respons non-JSON (misalnya error Vercel).
       const contentType = response.headers.get('content-type') || 'tidak diketahui';
-      const responseDetail = text ? text.replace(/\\s+/g, ' ').slice(0, 500) : 'Body respons kosong.';
+      const responseDetail = text ? text.replace(/\s+/g, ' ').slice(0, 500) : 'Body respons kosong.';
       throw new Error(
         `API mengembalikan respons non-JSON. HTTP ${response.status}; Content-Type: ${contentType}; Detail: ${responseDetail}`
       );
