@@ -2,7 +2,8 @@
 
 // ExGudang API Client (versi backend)
 window.ExGudangAPI = (() => {
-  const API_BASE = 'https://apigudang.doodweb.tech/api';
+  // [MODIFIED] Gunakan API serverless pada domain Vercel yang sama.
+  const API_BASE = '/api';
   const TOKEN_KEY = 'exgudang_token';
   const ADMIN_KEY = 'exgudang_admin';
   const TIMEOUT_MS = 15000;
