@@ -7,6 +7,8 @@
   const content = document.getElementById('page-content');
   const header = document.querySelector('.app-header');
   const bottomNav = document.querySelector('.bottom-nav');
+  // [ADDED] Referensi judul halaman pada header.
+  const headerPageTitle = document.getElementById('header-page-title');
 
   // [ADDED] Tema terang/gelap tersimpan untuk seluruh aplikasi.
   const THEME_KEY = 'aigud_theme';
@@ -79,8 +81,30 @@
     }
   };
 
+  // [ADDED] Peta nama halaman untuk judul header.
+  function updateHeaderTitle() {
+    const pageTitles = {
+      home: 'Beranda',
+      items: 'Barang',
+      'item-form': 'Tambah Barang',
+      detail: 'Detail Barang',
+      'stock-in': 'Barang Masuk',
+      'stock-out': 'Barang Keluar',
+      reports: 'Laporan',
+      'report-items': 'Laporan Barang',
+      'report-profit': 'Laporan Keuntungan',
+      'report-stock': 'Laporan Stok',
+      movements: 'Riwayat Transaksi'
+    };
+
+    if (headerPageTitle) {
+      headerPageTitle.textContent = pageTitles[state.currentPage] || 'Beranda';
+    }
+  }
+
   // [ADDED] Peta halaman ke tab navigasi bawah.
   function updateNavigation() {
+    updateHeaderTitle();
     const tabPage = {
       home: 'home',
       items: 'items',
@@ -286,12 +310,6 @@
       });
     }, 300);
   });
-
-  // [ADDED] Tombol notifikasi untuk sementara menampilkan informasi.
-  document.getElementById('notification-button')
-    .addEventListener('click', () => {
-      showToast('Pengecekan stok tersedia di halaman Beranda.', 'success');
-    });
 
   // [ADDED] Mulai aplikasi.
   async function init() {
