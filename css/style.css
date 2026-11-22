@@ -1429,3 +1429,124 @@ html, body, #app { background: var(--background); color: var(--text); transition
 @keyframes aigud-liquid { 0% { transform: translate3d(0,0,0) rotate(0deg); } 100% { transform: translate3d(22px,-18px,0) rotate(18deg); } }
 @media (min-width: 600px) { .login-screen { min-height: calc(100dvh - 40px); padding-top: 72px; } }
 @media (prefers-reduced-motion: reduce) { .login-screen::before, .login-screen::after { animation: none; } }
+
+
+/* [ADDED] Ringkasan ringkas khusus pusat pengelolaan persediaan. */
+.items-overview {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1fr;
+  gap: 8px;
+  margin: 2px 0 18px;
+}
+
+.items-overview-main,
+.items-overview-stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  box-shadow: var(--shadow);
+}
+
+.items-overview-main {
+  background: var(--green-light);
+  border-color: transparent;
+}
+
+.items-overview-main span,
+.items-overview-stat span {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.items-overview-main strong {
+  color: var(--green);
+  font-size: 23px;
+  font-weight: 800;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.items-overview-stat strong {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.items-overview-stat.warning strong {
+  color: var(--orange);
+}
+
+.items-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 2px 0 12px;
+}
+
+.items-list-heading h2 {
+  margin: 0 0 4px;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.45px;
+}
+
+.items-list-heading span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.filter-count {
+  margin-left: 3px;
+  font-size: 10px;
+  opacity: .78;
+}
+
+/* [MODIFIED] Navigasi bawah: ikon selalu tampil, label hanya pada halaman aktif. */
+.nav-item {
+  gap: 3px;
+}
+
+.nav-item span {
+  display: none;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.nav-item.active span {
+  display: block;
+}
+
+@media (max-width: 360px) {
+  .items-overview {
+    gap: 6px;
+  }
+
+  .items-overview-main,
+  .items-overview-stat {
+    padding: 10px 8px;
+  }
+
+  .items-overview-main span,
+  .items-overview-stat span {
+    font-size: 9px;
+  }
+
+  .items-overview-main strong {
+    font-size: 20px;
+  }
+
+  .items-overview-stat strong {
+    font-size: 14px;
+  }
+}
