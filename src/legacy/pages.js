@@ -743,7 +743,7 @@ window.ExGudangPages = (() => {
           </div>
 
           ${item ? `
-            {/* [ADDED] Stok terkini dapat diperbarui langsung saat mengedit barang. */}
+            <!-- [ADDED] Stok terkini dapat diperbarui langsung saat mengedit barang. -->
             <div class="form-group">
               <label>Stok Terkini <span class="required">*</span></label>
               <input class="input" type="number" name="current_stock"
