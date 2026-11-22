@@ -575,42 +575,62 @@ window.ExGudangPages = (() => {
           </div>
         </div>
 
-        <label class="search-box">
-          <i class="fa-solid fa-magnifying-glass"></i>
-          <input id="item-search" type="search"
-                 placeholder="Cari nama atau kode barang..."
-                 value="${escapeHtml(itemSearch)}"
-                 autocomplete="off">
-        </label>
+        <div class="items-toolbar mt-12">
+          <label class="search-box items-search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input id="item-search" type="search"
+                   placeholder="Cari barang..."
+                   value="${escapeHtml(itemSearch)}"
+                   autocomplete="off">
+          </label>
 
-        <div class="filter-tabs mt-12" role="group" aria-label="Filter status stok">
-          ${stockFilters.map(([key, label, count]) => `
-            <button type="button"
-                    class="filter-chip ${activeStockFilter === key ? 'active' : ''}"
-                    data-action="stock-filter"
-                    data-filter="${key}"
-                    aria-pressed="${activeStockFilter === key ? 'true' : 'false'}">
-              ${label} <span class="filter-count">${number(count)}</span>
-            </button>
-          `).join('')}
-        </div>
+          <details class="items-filter-menu">
+            <summary class="items-filter-trigger" aria-label="Buka filter barang">
+              <i class="fa-solid fa-sliders"></i>
+              <span>Filter</span>
+              ${(activeStockFilter !== 'all' ? 1 : 0) + (activeCategory !== '' ? 1 : 0) > 0
+                ? `<span class="items-filter-badge">${(activeStockFilter !== 'all' ? 1 : 0) + (activeCategory !== '' ? 1 : 0)}</span>`
+                : ''}
+            </summary>
 
-        <div class="filter-tabs mt-12" role="group" aria-label="Filter kategori barang">
-          <button type="button"
-                  class="filter-chip ${activeCategory === '' ? 'active' : ''}"
-                  data-action="category-filter"
-                  data-id=""
-                  aria-pressed="${activeCategory === '' ? 'true' : 'false'}">Semua kategori</button>
+            <div class="items-filter-panel">
+              <div class="items-filter-section">
+                <span class="items-filter-title">Status stok</span>
+                <div class="items-filter-options" role="group" aria-label="Filter status stok">
+                  ${stockFilters.map(([key, label, count]) => `
+                    <button type="button"
+                            class="filter-chip ${activeStockFilter === key ? 'active' : ''}"
+                            data-action="stock-filter"
+                            data-filter="${key}"
+                            aria-pressed="${activeStockFilter === key ? 'true' : 'false'}">
+                      ${label} <span class="filter-count">${number(count)}</span>
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
 
-          ${cachedCategories.map((category) => `
-            <button type="button"
-                    class="filter-chip ${activeCategory === String(category.id) ? 'active' : ''}"
-                    data-action="category-filter"
-                    data-id="${Number(category.id)}"
-                    aria-pressed="${activeCategory === String(category.id) ? 'true' : 'false'}">
-              ${escapeHtml(category.name)}
-            </button>
-          `).join('')}
+              <div class="items-filter-section">
+                <span class="items-filter-title">Kategori</span>
+                <div class="items-filter-options" role="group" aria-label="Filter kategori barang">
+                  <button type="button"
+                          class="filter-chip ${activeCategory === '' ? 'active' : ''}"
+                          data-action="category-filter"
+                          data-id=""
+                          aria-pressed="${activeCategory === '' ? 'true' : 'false'}">Semua kategori</button>
+
+                  ${cachedCategories.map((category) => `
+                    <button type="button"
+                            class="filter-chip ${activeCategory === String(category.id) ? 'active' : ''}"
+                            data-action="category-filter"
+                            data-id="${Number(category.id)}"
+                            aria-pressed="${activeCategory === String(category.id) ? 'true' : 'false'}">
+                      ${escapeHtml(category.name)}
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+          </details>
         </div>
 
         <section class="item-list mt-16" aria-label="Daftar barang">
