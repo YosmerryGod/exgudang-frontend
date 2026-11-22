@@ -1523,8 +1523,14 @@ html, body, #app { background: var(--background); color: var(--text); transition
   line-height: 1.2;
 }
 
+.nav-item.active {
+  flex-direction: row;
+  gap: 7px;
+}
+
 .nav-item.active span {
   display: block;
+  white-space: nowrap;
 }
 
 @media (max-width: 360px) {
