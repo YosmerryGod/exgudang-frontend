@@ -125,6 +125,10 @@
 
       button.classList.toggle('active', active);
 
+      // [ADDED] Nama aksesibel tetap tersedia saat label visual disembunyikan.
+      const label = button.querySelector('span')?.textContent.trim();
+      if (label) button.setAttribute('aria-label', label);
+
       if (active) {
         button.setAttribute('aria-current', 'page');
       } else {
