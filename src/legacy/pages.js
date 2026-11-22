@@ -742,7 +742,16 @@ window.ExGudangPages = (() => {
             </div>
           </div>
 
-          ${item ? '' : `
+          ${item ? `
+            {/* [ADDED] Stok terkini dapat diperbarui langsung saat mengedit barang. */}
+            <div class="form-group">
+              <label>Stok Terkini <span class="required">*</span></label>
+              <input class="input" type="number" name="current_stock"
+                     min="0" step="any" required
+                     value="${Number(item.current_stock || 0)}">
+              <span class="form-hint">Mengubah angka stok tanpa membuat transaksi masuk atau keluar.</span>
+            </div>
+          ` : `
             <div class="form-group">
               <label>Stok Awal <span class="required">*</span></label>
               <input class="input" type="number" name="initial_stock"
@@ -792,7 +801,8 @@ window.ExGudangPages = (() => {
       'cost_price',
       'outgoing_price',
       'minimum_stock',
-      'initial_stock'
+      'initial_stock',
+      'current_stock' // [ADDED] Kirim stok terkini pada pembaruan barang.
     ]) {
       if (data[key] !== undefined) data[key] = Number(data[key]);
     }
