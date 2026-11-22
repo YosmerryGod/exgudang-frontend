@@ -12,6 +12,13 @@ window.ExGudangPages = (() => {
   let cachedItems = [];
   let cachedCategories = [];
   let cachedDashboard = null;
+  // [ADDED] State tab dan cache grafik beranda.
+  let homeTab = 'summary';
+  let homePeriod = 7;
+  let homeCache = null;
+  let homeTrendCache = {};
+  let homeTrendErrors = {};
+
 
   // [ADDED] Escape teks agar data barang tidak dianggap sebagai HTML.
   function escapeHtml(value) {
@@ -269,55 +276,235 @@ window.ExGudangPages = (() => {
   }
   
 
-  // [ADDED] Beranda berdasarkan dashboard API.
+
+  // [ADDED] Mengambil agregasi transaksi lengkap per rentang agar grafik tidak bergantung pada 100 transaksi terbaru.
+  async function fetchHomeTrend(period) {
+    const endDate = today();
+    const startDate = addDays(endDate, -(period - 1));
+    const bucketSize = period === 7 ? 1 : period === 30 ? 5 : 7;
+    const ranges = [];
+
+    for (let offset = 0; offset < period; offset += bucketSize) {
+      const from = addDays(startDate, offset);
+      const to = addDays(startDate, Math.min(period - 1, offset + bucketSize - 1));
+      ranges.push({ from, to });
+    }
+
+    const reports = await Promise.all(ranges.map(async (dateRange) => {
+      const response = await API.getMovementReport(dateRange.from, dateRange.to);
+      const data = response.data || {};
+      const date = new Date(dateRange.from + 'T12:00:00');
+      const label = period === 7
+        ? new Intl.DateTimeFormat('id-ID', { weekday: 'short' }).format(date)
+        : new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short' }).format(date);
+
+      return {
+        label,
+        inQty: Number(data.total_in_quantity || 0),
+        outQty: Number(data.total_out_quantity || 0),
+        inValue: Number(data.total_in_cost_value || 0),
+        outValue: Number(data.total_out_cost_value || 0)
+      };
+    }));
+
+    return reports;
+  }
+
+  // [ADDED] Memuat grafik sesuai periode yang dipilih.
+  async function ensureHomeTrend(period) {
+    if (Object.prototype.hasOwnProperty.call(homeTrendCache, period)) return;
+
+    try {
+      homeTrendCache[period] = await fetchHomeTrend(period);
+      delete homeTrendErrors[period];
+    } catch (error) {
+      homeTrendCache[period] = null;
+      homeTrendErrors[period] = error.message || 'Grafik gagal dimuat.';
+    }
+  }
+
+  // [ADDED] Grafik garis SVG dengan dua seri dan tooltip pada setiap titik.
+  function homeLineChart(points, firstKey, secondKey, firstLabel, secondLabel, formatter, ariaLabel) {
+    if (!points || !points.length) {
+      return emptyState('Belum ada data transaksi pada periode ini', 'fa-chart-line');
+    }
+
+    const width = 320;
+    const left = 8;
+    const right = 312;
+    const top = 12;
+    const bottom = 104;
+    const max = Math.max(1, ...points.map((point) => Math.max(point[firstKey], point[secondKey])));
+    const x = (index) => points.length === 1 ? (left + right) / 2 : left + index * (right - left) / (points.length - 1);
+    const y = (value) => bottom - (Number(value || 0) / max) * (bottom - top);
+    const series = [
+      { key: firstKey, label: firstLabel, color: 'var(--green)' },
+      { key: secondKey, label: secondLabel, color: 'var(--red)' }
+    ];
+
+    const grid = [0, 0.5, 1].map((ratio) => {
+      const position = bottom - ratio * (bottom - top);
+      return '<line x1="' + left + '" x2="' + right + '" y1="' + position + '" y2="' + position + '" stroke="var(--border)" stroke-dasharray="3 4"/>';
+    }).join('');
+
+    const lines = series.map((item) => {
+      const coordinates = points.map((point, index) => x(index) + ',' + y(point[item.key])).join(' ');
+      const markers = points.map((point, index) => {
+        const title = escapeHtml(point.label + ' · ' + item.label + ': ' + formatter(point[item.key]));
+        return '<circle cx="' + x(index) + '" cy="' + y(point[item.key]) + '" r="3" fill="' + item.color + '" stroke="var(--surface)" stroke-width="1.5"><title>' + title + '</title></circle>';
+      }).join('');
+
+      return '<polyline points="' + coordinates + '" fill="none" stroke="' + item.color + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' + markers;
+    }).join('');
+
+    const middle = points[Math.floor((points.length - 1) / 2)];
+    const axis = '<div class="chart-axis"><span>' + escapeHtml(points[0].label) + '</span><span>' + escapeHtml(middle.label) + '</span><span>' + escapeHtml(points[points.length - 1].label) + '</span></div>';
+
+    return '<svg viewBox="0 0 ' + width + ' 116" class="chart-svg" role="img" aria-label="' + escapeHtml(ariaLabel) + '">' + grid + lines + '</svg>' + axis;
+  }
+
+  // [ADDED] Komposisi persediaan dihitung dari status setiap barang aktual.
+  function homeCompositionMarkup(items) {
+    const counts = { safe: 0, low: 0, empty: 0 };
+    items.forEach((item) => {
+      if (Number(item.current_stock) <= 0) counts.empty += 1;
+      else if (Number(item.current_stock) <= Number(item.minimum_stock)) counts.low += 1;
+      else counts.safe += 1;
+    });
+
+    const total = items.length;
+    const safePercent = total ? counts.safe / total * 100 : 0;
+    const lowPercent = total ? counts.low / total * 100 : 0;
+    const emptyPercent = total ? counts.empty / total * 100 : 0;
+    const lowEnd = safePercent + lowPercent;
+    const background = total
+      ? 'conic-gradient(var(--green) 0% ' + safePercent + '%, var(--orange) ' + safePercent + '% ' + lowEnd + '%, var(--red) ' + lowEnd + '% 100%)'
+      : 'var(--border)';
+
+    const legendRow = (label, count, percent, color) => '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:5px 0"><span style="display:flex;align-items:center;gap:7px;color:var(--muted)"><i style="width:9px;height:9px;border-radius:50%;background:' + color + ';display:inline-block"></i>' + label + '</span><b style="color:var(--text)">' + number(count) + ' <small style="font-weight:500;color:var(--muted)">(' + (total ? number(percent) : '0') + '%)</small></b></div>';
+
+    return '<section class="card mt-12"><div class="section-heading" style="margin:0 0 12px"><h3>Komposisi Persediaan</h3><span class="text-muted" style="font-size:11px">' + number(total) + ' barang</span></div>' +
+      '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">' +
+        '<div role="img" aria-label="Komposisi stok: ' + counts.safe + ' aman, ' + counts.low + ' menipis, ' + counts.empty + ' habis" style="width:132px;height:132px;flex:0 0 132px;border-radius:50%;background:' + background + ';display:grid;place-items:center">' +
+          '<div style="width:88px;height:88px;border-radius:50%;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center"><strong style="font-size:22px;line-height:1.1">' + number(total) + '</strong><span style="font-size:10px;color:var(--muted)">Total barang</span></div>' +
+        '</div>' +
+        '<div style="flex:1;min-width:130px">' +
+          legendRow('Aman', counts.safe, safePercent, 'var(--green)') +
+          legendRow('Menipis', counts.low, lowPercent, 'var(--orange)') +
+          legendRow('Habis', counts.empty, emptyPercent, 'var(--red)') +
+        '</div>' +
+      '</div></section>';
+  }
+
+  // [ADDED] Tab beranda tidak mengubah navigasi global aplikasi.
+  function homeTabsMarkup() {
+    const tabs = [
+      ['summary', 'Ringkasan'],
+      ['transactions', 'Transaksi'],
+      ['attention', 'Perlu Perhatian']
+    ];
+
+    return '<div class="chip-scroll mt-12" role="group" aria-label="Bagian beranda" style="display:flex;width:100%;padding:5px;background:var(--surface);border-radius:14px;box-shadow:var(--shadow-in);gap:5px">' +
+      tabs.map(([key, label]) => '<button type="button" class="filter-chip ' + (homeTab === key ? 'active' : '') + '" data-action="home-tab" data-tab="' + key + '" aria-pressed="' + (homeTab === key ? 'true' : 'false') + '" style="flex:1;min-width:0;padding:9px 7px;font-size:11px;white-space:nowrap">' + label + '</button>').join('') +
+      '</div>';
+  }
+
+  // [ADDED] Render isi tab berdasarkan data dashboard dan API laporan.
+  function renderHomeView() {
+    if (!homeCache) return;
+
+    const d = homeCache.dashboard;
+    const summary = d.summary || {};
+    const stock = summary.stock || {};
+    const monthly = summary.monthly || {};
+    const daily = summary.daily || summary.today || monthly;
+    const alerts = d.stock_alerts || [];
+    const movements = d.recent_movements || [];
+    const items = homeCache.items || [];
+    const user = (API.getAdmin() || {}).username;
+    const alertRow = (item) => '<button type="button" class="item-row" data-action="detail" data-id="' + Number(item.id) + '" style="width:100%;text-align:left;color:inherit">' +
+      itemImage(item) + '<div class="item-info"><p class="item-name">' + escapeHtml(item.name) + '</p><p class="item-code">' + escapeHtml(item.code || '') + '</p>' +
+      '<p class="item-stock">Stok: ' + number(item.current_stock) + ' ' + escapeHtml(item.unit) + '</p></div>' +
+      '<div class="item-side">' + statusFor(item) + '<span class="min-label">Min. ' + number(item.minimum_stock) + ' ' + escapeHtml(item.unit) + '</span></div></button>';
+
+    let body = '';
+
+    if (homeTab === 'summary') {
+      const trend = homeTrendCache[homePeriod];
+      const trendError = homeTrendErrors[homePeriod];
+      const points = Array.isArray(trend) ? trend : [];
+      const total = (key) => points.reduce((sum, point) => sum + Number(point[key] || 0), 0);
+      const periodOptions = [[7, '7 Hari'], [30, '30 Hari'], [90, '90 Hari']];
+
+      body = '<section class="hero-pro mt-12">' +
+        '<div class="hero-top"><div><p>' + (user ? 'Halo, ' + escapeHtml(user) : 'Ringkasan Gudang') + '</p><h2>Total Barang</h2></div><strong>' + number(stock.total_items) + '</strong></div>' +
+        '<div class="hero-meta"><div><span>Total Stok</span><b>' + number(stock.total_stock_units ?? 0) + '</b></div>' +
+        '<div><span>Nilai Persediaan</span><b>' + money(stock.total_stock_cost_value ?? 0) + '</b></div>' +
+        '<div><span>Stok Habis</span><b>' + number(stock.empty_stock_items ?? 0) + '</b></div></div></section>' +
+
+        '<div class="button-row mt-12"><button type="button" class="button" data-action="stock-in"><i class="fa-solid fa-plus"></i> Barang Masuk</button>' +
+        '<button type="button" class="button button-danger" data-action="stock-out"><i class="fa-solid fa-minus"></i> Barang Keluar</button></div>' +
+
+        '<section class="card mt-12"><div class="section-heading" style="margin:0 0 10px"><h3>Pergerakan Barang</h3><span class="legend">Jumlah unit</span></div>' +
+        '<div class="chip-scroll" style="margin-bottom:10px">' + periodOptions.map(([period, label]) => '<button type="button" class="filter-chip ' + (homePeriod === period ? 'active' : '') + '" data-action="home-period" data-period="' + period + '">' + label + '</button>').join('') + '</div>' +
+        (trendError ? '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><p>' + escapeHtml(trendError) + '</p><button type="button" class="text-link" data-action="home-period-retry">Coba lagi</button></div>' :
+          homeLineChart(points, 'inQty', 'outQty', 'Masuk', 'Keluar', number, 'Grafik garis jumlah barang masuk dan keluar')) +
+        '<div class="legend" style="display:flex;justify-content:space-between;gap:12px;margin-top:8px"><span><i class="dot g"></i>Masuk <b>' + number(total('inQty')) + ' unit</b></span><span><i class="dot r"></i>Keluar <b>' + number(total('outQty')) + ' unit</b></span></div></section>' +
+
+        '<section class="card mt-12"><div class="section-heading" style="margin:0 0 10px"><h3>Nilai Barang Masuk & Keluar</h3><span class="legend">Harga modal</span></div>' +
+        (trendError ? '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><p>Grafik nilai belum dapat dimuat.</p></div>' :
+          homeLineChart(points, 'inValue', 'outValue', 'Nilai masuk', 'Nilai keluar', money, 'Grafik garis nilai modal barang masuk dan keluar dalam rupiah')) +
+        '<div class="legend" style="display:flex;justify-content:space-between;gap:12px;margin-top:8px"><span><i class="dot g"></i>Masuk <b>' + money(total('inValue')) + '</b></span><span><i class="dot r"></i>Keluar <b>' + money(total('outValue')) + '</b></span></div>' +
+        '<p class="form-hint mt-12">Nilai dihitung berdasarkan harga modal, bukan harga jual.</p></section>' +
+
+        homeCompositionMarkup(items) +
+        '<div class="info-row mt-12"><div class="info-card"><span>Laba Bulan Ini</span><b class="text-green">' + money(monthly.estimated_profit) + '</b></div>' +
+        '<div class="info-card"><span>Nilai Barang Keluar Bulan Ini</span><b>' + money(monthly.total_outgoing_value) + '</b></div></div>';
+    } else if (homeTab === 'transactions') {
+      body = '<section class="panel mt-12"><div class="panel-head"><h3>Transaksi Terbaru</h3><span class="count-badge">' + movements.length + '</span>' +
+        '<button type="button" class="text-link" data-action="all-movements">Lihat Semua <i class="fa-solid fa-chevron-right"></i></button></div>' +
+        '<div class="panel-body">' + (movements.length ? movements.map(movementRow).join('') : emptyState('Belum ada transaksi', 'fa-clock-rotate-left')) + '</div></section>' +
+        '<div class="button-row mt-12"><button type="button" class="button" data-action="stock-in"><i class="fa-solid fa-plus"></i> Barang Masuk</button>' +
+        '<button type="button" class="button button-danger" data-action="stock-out"><i class="fa-solid fa-minus"></i> Barang Keluar</button></div>';
+    } else {
+      body = '<section class="panel mt-12"><div class="panel-head"><h3>Stok Perlu Perhatian</h3><span class="count-badge">' + alerts.length + '</span>' +
+        '<button type="button" class="text-link" data-action="low-stock">Lihat Laporan <i class="fa-solid fa-chevron-right"></i></button></div>' +
+        '<div class="panel-body">' + (alerts.length ? alerts.map(alertRow).join('') : emptyState('Semua stok masih aman', 'fa-circle-check')) + '</div></section>';
+    }
+
+    content().innerHTML = homeTabsMarkup() + body;
+  }
+
+  // [ADDED] Memuat ulang grafik tanpa mengambil ulang seluruh data beranda.
+  async function loadHomePeriod() {
+    if (!homeCache) return renderHome();
+    showLoading();
+    await ensureHomeTrend(homePeriod);
+    renderHomeView();
+  }
+
+  // [MODIFIED] Beranda menggunakan tab Ringkasan, Transaksi, dan Perlu Perhatian.
   async function renderHome() {
     showLoading();
+    homeTrendCache = {};
+    homeTrendErrors = {};
+
     try {
-      const d = (await API.getDashboard()).data, sm = d.summary, st = sm.stock, mo = sm.monthly, day = sm.daily || sm.today || mo;
-      const alerts = d.stock_alerts || [], moves = d.recent_movements || [];
-      const user = (API.getAdmin() || {}).username;
-      const alertRow = (i) => `<button type="button" class="item-row" data-action="detail" data-id="${Number(i.id)}" style="width:100%;text-align:left;color:inherit">
-        ${itemImage(i)}<div class="item-info"><p class="item-name">${escapeHtml(i.name)}</p><p class="item-code">${escapeHtml(i.code || '')}</p>
-        <p class="item-stock">Stok: ${number(i.current_stock)} ${escapeHtml(i.unit)}</p></div>
-        <div class="item-side">${statusFor(i)}<span class="min-label">Min. ${number(i.minimum_stock)} ${escapeHtml(i.unit)}</span></div></button>`;
-      content().innerHTML = `
-        <section class="hero-pro">
-          <div class="hero-top"><div><p>${user ? 'Halo, ' + escapeHtml(user) : 'Ringkasan Gudang'}</p><h2>Total Barang</h2></div><strong>${number(st.total_items)}</strong></div>
-          <div class="hero-meta">
-            <div><span>Total Stok</span><b>${number(st.total_stock_units ?? 0)}</b></div>
-            <div><span>Nilai Stok</span><b>${money(st.total_stock_cost_value ?? 0)}</b></div>
-            <div><span>Stok Habis</span><b>${number(st.empty_stock_items ?? 0)}</b></div>
-          </div>
-        </section>
+      const [dashboardResult, itemsResult] = await Promise.all([
+        API.getDashboard(),
+        API.getItems()
+      ]);
 
-        <div class="stat-grid three mt-12">
-          <div class="mini-stat green"><span>Masuk</span><strong>+ ${number(day.total_in_quantity)}</strong><small>hari ini</small></div>
-          <div class="mini-stat red"><span>Keluar</span><strong>- ${number(day.total_out_quantity)}</strong><small>hari ini</small></div>
-          <div class="mini-stat orange"><span>Menipis</span><strong>${number(st.low_stock_items)}</strong><small>barang</small></div>
-        </div>
+      homeCache = {
+        dashboard: dashboardResult.data || {},
+        items: itemsResult.data || []
+      };
 
-        <div class="info-row mt-12">
-          <div class="info-card"><span>Laba Bulan Ini</span><b class="text-green">${money(mo.estimated_profit)}</b></div>
-          <div class="info-card"><span>Barang Keluar Bulan Ini</span><b>${money(mo.total_outgoing_value)}</b></div>
-        </div>
-
-        <section class="panel mt-16">
-          <div class="panel-head"><h3>Stok Menipis</h3><span class="count-badge">${alerts.length}</span>
-            <button type="button" class="text-link" data-action="low-stock">Lihat Semua <i class="fa-solid fa-chevron-right"></i></button></div>
-          <div class="panel-body">${alerts.length ? alerts.map(alertRow).join('') : emptyState('Semua stok masih aman', 'fa-circle-check')}</div>
-        </section>
-
-        <div class="button-row mt-12">
-          <button type="button" class="button" data-action="stock-in"><i class="fa-solid fa-plus"></i> Barang Masuk</button>
-          <button type="button" class="button button-danger" data-action="stock-out"><i class="fa-solid fa-minus"></i> Barang Keluar</button>
-        </div>
-
-        <section class="panel mt-16">
-          <div class="panel-head"><h3>Transaksi Terbaru</h3><span class="count-badge">${moves.length}</span>
-            <button type="button" class="text-link" data-action="all-movements">Lihat Semua <i class="fa-solid fa-chevron-right"></i></button></div>
-          <div class="panel-body">${moves.length ? moves.map(movementRow).join('') : emptyState('Belum ada transaksi', 'fa-clock-rotate-left')}</div>
-        </section>`;
-    } catch (e) { showError(e); }
+      if (homeTab === 'summary') await ensureHomeTrend(homePeriod);
+      renderHomeView();
+    } catch (error) {
+      showError(error);
+    }
   }
 
   // [ADDED] Daftar barang, pencarian dan filter.
@@ -925,6 +1112,17 @@ window.ExGudangPages = (() => {
     switch (action) {
       case 'reload':
         return rerender();
+      // [ADDED] Interaksi tab dan periode grafik pada beranda.
+      case 'home-tab':
+        homeTab = ['summary', 'transactions', 'attention'].includes(element.dataset.tab) ? element.dataset.tab : 'summary';
+        return renderHomeView();
+      case 'home-period':
+        homePeriod = [7, 30, 90].includes(Number(element.dataset.period)) ? Number(element.dataset.period) : 7;
+        return loadHomePeriod();
+      case 'home-period-retry':
+        delete homeTrendCache[homePeriod];
+        delete homeTrendErrors[homePeriod];
+        return loadHomePeriod();
       case 'create-item':
         return render('item-form');
       case 'detail':
