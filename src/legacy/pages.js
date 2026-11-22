@@ -7,6 +7,7 @@ window.ExGudangPages = (() => {
 
   let selectedItemId = null;
   let activeCategory = '';
+  let activeStockFilter = 'all'; // [ADDED] Filter status stok pada halaman Barang.
   let activeReport = 'summary';
   let itemSearch = '';
   let cachedItems = [];
@@ -507,56 +508,115 @@ window.ExGudangPages = (() => {
     }
   }
 
-  // [ADDED] Daftar barang, pencarian dan filter.
+  // [MODIFIED] Halaman Barang menjadi pusat pengelolaan persediaan.
   async function renderItems() {
     showLoading();
 
     try {
       const [itemsResult, categoriesResult] = await Promise.all([
-        API.getItems({
-          search: itemSearch,
-          categoryId: activeCategory || undefined
-        }),
+        API.getItems(),
         API.getCategories()
       ]);
 
       cachedItems = itemsResult.data || [];
       cachedCategories = categoriesResult.data || [];
 
+      const stockOf = (item) => Number(item.current_stock || 0);
+      const minimumOf = (item) => Number(item.minimum_stock || 0);
+      const counts = {
+        safe: cachedItems.filter((item) => stockOf(item) > minimumOf(item)).length,
+        low: cachedItems.filter((item) => stockOf(item) > 0 && stockOf(item) <= minimumOf(item)).length,
+        empty: cachedItems.filter((item) => stockOf(item) <= 0).length
+      };
+      const totalUnits = cachedItems.reduce((sum, item) => sum + stockOf(item), 0);
+      const searchTerm = itemSearch.trim().toLocaleLowerCase('id-ID');
+      const visibleItems = cachedItems.filter((item) => {
+        const matchesSearch = !searchTerm ||
+          String(item.name || '').toLocaleLowerCase('id-ID').includes(searchTerm) ||
+          String(item.code || '').toLocaleLowerCase('id-ID').includes(searchTerm);
+        const matchesCategory = !activeCategory || Number(item.category_id) === Number(activeCategory);
+        const stock = stockOf(item);
+        const minimum = minimumOf(item);
+        const matchesStock = activeStockFilter === 'all' ||
+          (activeStockFilter === 'safe' && stock > minimum) ||
+          (activeStockFilter === 'low' && stock > 0 && stock <= minimum) ||
+          (activeStockFilter === 'empty' && stock <= 0);
+
+        return matchesSearch && matchesCategory && matchesStock;
+      });
+
+      const stockFilters = [
+        ['all', 'Semua', cachedItems.length],
+        ['safe', 'Aman', counts.safe],
+        ['low', 'Menipis', counts.low],
+        ['empty', 'Habis', counts.empty]
+      ];
+
       content().innerHTML = `
-        <div class="page-heading">
-          <h2>Barang</h2>
-          <span class="text-muted">${cachedItems.length} barang</span>
+        <section class="items-overview" aria-label="Ringkasan persediaan">
+          <div class="items-overview-main">
+            <span>Jenis barang</span>
+            <strong>${number(cachedItems.length)}</strong>
+          </div>
+          <div class="items-overview-stat">
+            <span>Total unit stok</span>
+            <strong>${number(totalUnits)}</strong>
+          </div>
+          <div class="items-overview-stat warning">
+            <span>Perlu restock</span>
+            <strong>${number(counts.low + counts.empty)}</strong>
+          </div>
+        </section>
+
+        <div class="items-list-heading">
+          <div>
+            <h2>Daftar Persediaan</h2>
+            <span>${number(visibleItems.length)} dari ${number(cachedItems.length)} barang</span>
+          </div>
         </div>
 
         <label class="search-box">
           <i class="fa-solid fa-magnifying-glass"></i>
           <input id="item-search" type="search"
-                 placeholder="Cari barang atau kode..."
+                 placeholder="Cari nama atau kode barang..."
                  value="${escapeHtml(itemSearch)}"
                  autocomplete="off">
         </label>
 
-        <div class="filter-tabs mt-12">
+        <div class="filter-tabs mt-12" role="group" aria-label="Filter status stok">
+          ${stockFilters.map(([key, label, count]) => `
+            <button type="button"
+                    class="filter-chip ${activeStockFilter === key ? 'active' : ''}"
+                    data-action="stock-filter"
+                    data-filter="${key}"
+                    aria-pressed="${activeStockFilter === key ? 'true' : 'false'}">
+              ${label} <span class="filter-count">${number(count)}</span>
+            </button>
+          `).join('')}
+        </div>
+
+        <div class="filter-tabs mt-12" role="group" aria-label="Filter kategori barang">
           <button type="button"
                   class="filter-chip ${activeCategory === '' ? 'active' : ''}"
                   data-action="category-filter"
-                  data-id="">Semua</button>
+                  data-id=""
+                  aria-pressed="${activeCategory === '' ? 'true' : 'false'}">Semua kategori</button>
 
           ${cachedCategories.map((category) => `
             <button type="button"
                     class="filter-chip ${activeCategory === String(category.id) ? 'active' : ''}"
                     data-action="category-filter"
-                    data-id="${Number(category.id)}">
+                    data-id="${Number(category.id)}"
+                    aria-pressed="${activeCategory === String(category.id) ? 'true' : 'false'}">
               ${escapeHtml(category.name)}
             </button>
           `).join('')}
         </div>
 
-        <section class="item-list mt-16">
-          ${cachedItems.length
-            ? cachedItems.map(itemRow).join('')
-            : `<div class="card">${emptyState('Barang belum tersedia', 'fa-box-open')}</div>`}
+        <section class="item-list mt-16" aria-label="Daftar barang">
+          ${visibleItems.length
+            ? visibleItems.map(itemRow).join('')
+            : `<div class="card">${emptyState(cachedItems.length ? 'Tidak ada barang yang sesuai filter' : 'Barang belum tersedia', 'fa-box-open')}</div>`}
         </section>
 
         <button type="button" class="fab" data-action="create-item" aria-label="Tambah barang">
@@ -566,6 +626,11 @@ window.ExGudangPages = (() => {
     } catch (error) {
       showError(error);
     }
+  }
+
+  // [ADDED] Simpan kata pencarian sebelum daftar barang dimuat ulang.
+  function setItemSearch(value) {
+    itemSearch = String(value || '');
   }
 
   // [ADDED] Form tambah atau edit barang.
@@ -1136,6 +1201,9 @@ window.ExGudangPages = (() => {
       case 'category-filter':
         activeCategory = element.dataset.id || '';
         return render('items');
+      case 'stock-filter': // [ADDED] Filter status stok pada halaman Barang.
+        activeStockFilter = element.dataset.filter || 'all';
+        return render('items');
       case 'stock-in':
         return render('stock-in', { id: id || null });
       case 'stock-out':
@@ -1197,6 +1265,7 @@ window.ExGudangPages = (() => {
     handleAction,
     renderHome,
     renderItems,
+    setItemSearch, // [ADDED] Dipakai input pencarian pada app.js.
     renderReports
   };
 })();
