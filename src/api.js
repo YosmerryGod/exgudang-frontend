@@ -161,7 +161,11 @@ async function getItemMovements(id, limit = 50, offset = 0) {
 async function getReportSummary() { return request('/reports/summary'); }
 async function getLowStockItems() { return request('/reports/low-stock'); }
 async function getMovementReport(startDate, endDate) {
-  return request(`/reports/movements${queryString({ startDate, endDate })}`);
+  const response = await request(`/reports/movements${queryString({ startDate, endDate })}`);
+  // [MODIFIED] Backend ExGudang mengirim agregasi laporan langsung di response.data.
+  // Normalisasi juga menerima envelope data.data agar komponen laporan tidak membaca undefined.
+  const report = response?.data?.data ?? response?.data ?? {};
+  return { ...response, data: report };
 }
 async function getRecentMovements(limit = 20) {
   return request(`/movements/recent${queryString({ limit })}`);
